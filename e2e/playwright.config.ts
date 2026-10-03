@@ -6,9 +6,9 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   retries: 1,
-  reporter: 'html',
+  reporter: process.env.CI ? 'list' : 'html',
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: process.env.BASE_URL || 'http://localhost:8080',
     trace: 'on-first-retry',
   },
   projects: [

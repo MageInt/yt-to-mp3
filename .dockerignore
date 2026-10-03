@@ -5,3 +5,5 @@ e2e
 .git
 *.md
 .gitignore
+docs
+.github

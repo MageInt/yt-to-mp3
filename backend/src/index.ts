@@ -1,31 +1,17 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { jobsRouter } from './routes/jobs.js';
+import { config } from './config.js';
+import { createApp } from './app.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = createApp();
 
-const app = express();
-const PORT = parseInt(process.env.PORT || '8080', 10);
-
-app.use(cors());
-app.use(express.json());
-
-app.use('/api', jobsRouter);
-
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
+const server = app.listen(config.port, () => {
+  console.log(`App listening on port ${config.port}`);
 });
 
-app.use(express.static(path.join(__dirname, '../public')));
-
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, '../public/index.html'));
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`App listening on port ${PORT}`);
-});
+// Node runs as PID 1 in the container: without handlers, SIGTERM is ignored and `docker stop` waits 10s.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    console.log(`Received ${signal}, shutting down`);
+    server.close(() => process.exit(0));
+    server.closeAllConnections();
+  });
+}

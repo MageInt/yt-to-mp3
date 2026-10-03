@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "test:offline": "playwright test --grep-invert @network"
   },
   "devDependencies": {
-    "@playwright/test": "^1.46.0",
-    "@types/node": "^20.14.0"
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1"
   }
 }

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
+import { config } from '../config.js';
 
 export interface JobFile {
   filename: string;
@@ -27,17 +28,25 @@ const jobs = new Map<string, Job>();
 const processes = new Map<string, ReturnType<typeof spawn>>();
 const sseClients = new Map<string, Set<(data: string) => void>>();
 
-const CLEANUP_INTERVAL = 30 * 60 * 1000;
-const JOB_TTL = 30 * 60 * 1000;
+const CLEANUP_INTERVAL = 5 * 60 * 1000;
+const MAX_ERROR_LENGTH = 500;
+const MAX_OUTPUT_BUFFER = 64 * 1024;
+
+export class TooManyJobsError extends Error {
+  constructor() {
+    super('Server is busy. Please try again in a few minutes.');
+    this.name = 'TooManyJobsError';
+  }
+}
 
 setInterval(() => {
   const now = Date.now();
   for (const [id, job] of jobs) {
-    if (now - job.createdAt > JOB_TTL) {
+    if (now - job.createdAt > config.jobTtlMs) {
       cleanupJob(id);
     }
   }
-}, CLEANUP_INTERVAL);
+}, CLEANUP_INTERVAL).unref();
 
 function cleanupJob(id: string) {
   const job = jobs.get(id);
@@ -59,7 +68,17 @@ function hasPlaylistParam(url: string): boolean {
   return /[?&]list=/.test(url);
 }
 
+function summarizeError(output: string): string {
+  const errorLines = output.split('\n').filter(line => line.startsWith('ERROR:'));
+  const summary = (errorLines.length > 0 ? errorLines.join('\n') : output).trim();
+  return summary.length > MAX_ERROR_LENGTH ? `${summary.slice(0, MAX_ERROR_LENGTH)}…` : summary;
+}
+
 export function createJob(url: string): Job {
+  if (processes.size >= config.maxConcurrentJobs) {
+    throw new TooManyJobsError();
+  }
+
   const id = crypto.randomUUID();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'yt-dlp-'));
   const isPlaylist = hasPlaylistParam(url);
@@ -77,7 +96,6 @@ function startDownload(job: Job) {
     '--retries', '3',
     '--retry-sleep', '5',
     '--ignore-errors',
-    job.url,
     '-x',
     '--audio-format', 'mp3',
     '--audio-quality', '0',
@@ -91,9 +109,14 @@ function startDownload(job: Job) {
 
   args.push('-o', outputTemplate);
 
-  if (!job.isPlaylist) {
+  if (job.isPlaylist) {
+    args.push('--playlist-end', String(config.maxPlaylistItems));
+  } else {
     args.push('--no-playlist');
   }
+
+  // `--` stops option parsing so the URL can never be read as a yt-dlp flag.
+  args.push('--', job.url);
 
   const ytProcess = spawn('yt-dlp', args);
 
@@ -103,13 +126,16 @@ function startDownload(job: Job) {
     if (processes.has(job.id)) {
       ytProcess.kill('SIGTERM');
       job.status = 'failed';
-      job.error = 'Download timed out after 10 minutes. Try again later.';
+      job.error = `Download timed out after ${config.downloadTimeoutMs / 60000} minutes. Try again later.`;
       emitEvent(job.id, { type: 'failed', error: job.error });
       processes.delete(job.id);
     }
-  }, 10 * 60 * 1000);
+  }, config.downloadTimeoutMs);
 
   let processOutput = '';
+  const appendOutput = (text: string) => {
+    processOutput = (processOutput + text).slice(-MAX_OUTPUT_BUFFER);
+  };
   let lastEmittedProgress = -1;
   const pendingProgress: number[] = [];
   let seqIndex = 0;
@@ -128,7 +154,7 @@ function startDownload(job: Job) {
 
   ytProcess.stdout?.on('data', (data: Buffer) => {
     const text = data.toString();
-    processOutput += text;
+    appendOutput(text);
     const lines = text.split('\n');
     for (const line of lines) {
       for (const part of line.split('\r')) {
@@ -144,7 +170,7 @@ function startDownload(job: Job) {
   });
 
   ytProcess.stderr?.on('data', (data: Buffer) => {
-    processOutput += data.toString();
+    appendOutput(data.toString());
   });
 
   ytProcess.on('close', (code) => {
@@ -153,11 +179,19 @@ function startDownload(job: Job) {
     processes.delete(job.id);
     clearTimeout(processTimeout);
 
-    const allFiles = fs.readdirSync(job.tmpDir);
+    // Already failed (timeout) or cleaned up: don't overwrite the reported state.
+    if (job.status === 'failed' || !jobs.has(job.id)) {
+      return;
+    }
+
+    let allFiles: string[] = [];
+    try {
+      allFiles = fs.readdirSync(job.tmpDir);
+    } catch {}
     const mp3Files = allFiles.filter(f => f.endsWith('.mp3'));
     if (mp3Files.length === 0) {
       job.status = 'failed';
-      job.error = processOutput.trim() || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found');
+      job.error = summarizeError(processOutput) || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found');
       emitEvent(job.id, { type: 'failed', error: job.error });
       return;
     }
@@ -172,7 +206,7 @@ function startDownload(job: Job) {
 
     job.status = 'completed';
     job.progress = 100;
-    console.log(`[downloadManager] Job ${job.id} completed. files[0]=${job.filename}, total files=${job.files.length}, filePath exists=${fs.existsSync(job.filePath!)}`);
+    console.log(`[downloadManager] Job ${job.id} completed. files[0]=${job.filename}, total files=${job.files.length}`);
     emitEvent(job.id, {
       type: 'completed',
       progress: 100,
@@ -183,6 +217,7 @@ function startDownload(job: Job) {
   });
 
   ytProcess.on('error', (err) => {
+    clearInterval(progressTimer);
     processes.delete(job.id);
     clearTimeout(processTimeout);
     job.status = 'failed';

@@ -19,13 +19,23 @@ test.describe('yt-to-mp3', () => {
     await expect(page.locator('text=Invalid URL')).toBeVisible({ timeout: 15_000 });
   });
 
+  test('rejects non-YouTube URLs', async ({ page }) => {
+    await page.goto('/');
+
+    await page.locator('input[type="text"]').fill('https://example.com/video');
+    await page.locator('button[type="submit"]').click();
+
+    await expect(page.locator('text=Only YouTube URLs are supported')).toBeVisible({ timeout: 15_000 });
+  });
+
   test('button is disabled when input is empty', async ({ page }) => {
     await page.goto('/');
     const button = page.locator('button[type="submit"]');
     await expect(button).toBeDisabled();
   });
 
-  test('downloads MP3 for a valid YouTube URL', async ({ page }) => {
+  // Hits YouTube for real: excluded in CI (`--grep-invert @network`) because runner IPs are often blocked.
+  test('downloads MP3 for a valid YouTube URL', { tag: '@network' }, async ({ page }) => {
     await page.goto('/');
 
     const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });

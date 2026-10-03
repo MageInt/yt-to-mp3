@@ -1,24 +1,36 @@
 import { Router } from 'express';
-import fs from 'fs';
-import { createJob, getJob, subscribe } from '../services/downloadManager.js';
+import rateLimit from 'express-rate-limit';
+import { config } from '../config.js';
+import { createJob, getJob, subscribe, TooManyJobsError } from '../services/downloadManager.js';
+import { validateYoutubeUrl } from '../services/urlValidator.js';
 
 export const jobsRouter = Router();
 
-jobsRouter.post('/jobs', (req, res) => {
-  const { url } = req.body;
+const createJobLimiter = rateLimit({
+  windowMs: config.rateLimitWindowMs,
+  limit: config.rateLimitMax,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
+});
 
-  if (!url || typeof url !== 'string') {
-    res.status(400).json({ error: 'URL is required' });
+jobsRouter.post('/jobs', createJobLimiter, (req, res) => {
+  const result = validateYoutubeUrl(req.body?.url);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
     return;
   }
 
-  if (!url.startsWith('https://') && !url.startsWith('http://')) {
-    res.status(400).json({ error: 'Invalid URL' });
-    return;
+  try {
+    const job = createJob(result.url);
+    res.status(201).json({ id: job.id, status: job.status });
+  } catch (err) {
+    if (err instanceof TooManyJobsError) {
+      res.status(429).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
-
-  const job = createJob(url);
-  res.status(201).json({ id: job.id, status: job.status });
 });
 
 jobsRouter.get('/jobs/:id/progress', (req, res) => {
@@ -59,7 +71,7 @@ jobsRouter.get('/jobs/:id/file', (req, res) => {
     return;
   }
 
-  console.log(`[jobs] File requested: job=${id}, filePath=${job.filePath}, filename=${job.filename}`);
+  console.log(`[jobs] File requested: job=${id}, filename=${job.filename}`);
   res.download(job.filePath, job.filename!, (err) => {
     if (err) {
       console.error('Download error:', err);

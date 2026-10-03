@@ -4,8 +4,8 @@
   <img src="frontend/public/yt2mp3logo.png" alt="yt-to-mp3" width="400" />
 </p>
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/oconnorj00/yt-to-mp3?label=Docker%20Pulls&logo=docker)](https://hub.docker.com/r/oconnorj00/yt-to-mp3 "Docker Pulls")
-[![Docker Image Size](https://img.shields.io/docker/image-size/oconnorj00/yt-to-mp3/latest)](https://hub.docker.com/r/oconnorj00/yt-to-mp3 "Docker Image Size")
+[![Build, test & release](https://github.com/MageInt/yt-to-mp3/actions/workflows/release.yml/badge.svg)](https://github.com/MageInt/yt-to-mp3/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/MageInt/yt-to-mp3)](https://github.com/MageInt/yt-to-mp3/releases)
 
 Paste a YouTube link, get an MP3. Containerized, one command to run.
 
@@ -19,6 +19,7 @@ Paste a YouTube link, get an MP3. Containerized, one command to run.
 - [Project Structure](#project-structure)
 - [Development](#development)
 - [E2E Tests](#e2e-tests)
+- [Documentation](#documentation)
 - [License](#license)
 
 ## Prerequisites
@@ -38,9 +39,11 @@ docker compose up --build
 ```yaml
 services:
   app:
-    image: oconnorj00/yt-to-mp3:latest
+    image: ghcr.io/mageint/yt-to-mp3:latest
     ports:
       - "8080:8080"
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 ```
 
@@ -49,6 +52,8 @@ docker compose up
 ```
 
 Open [http://localhost:8080](http://localhost:8080), paste a YouTube URL, click Download.
+
+Limits (concurrent jobs, playlist size, rate limit…) are configurable through environment variables: see [docs/configuration.md](docs/configuration.md).
 
 ## Features
 
@@ -59,6 +64,7 @@ Open [http://localhost:8080](http://localhost:8080), paste a YouTube URL, click 
 - yt-dlp + ffmpeg under the hood for best-quality MP3s
 - Real-time download progress bar
 - Dark mode support
+- Hardened: YouTube-only URL allowlist, rate limiting, concurrency limits, security headers, non-root container
 
 ## Architecture
 
@@ -77,21 +83,26 @@ A single container runs both the React frontend (served as static files) and the
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React, Vite, TypeScript |
-| Backend | Node.js, Express, TypeScript |
-| Audio | yt-dlp, ffmpeg |
+| Frontend | React 19, Vite 8, TypeScript |
+| Backend | Node.js 24, Express 5, TypeScript, helmet |
+| Audio | yt-dlp (PyPI), ffmpeg |
 | Container | Docker, Docker Compose |
-| E2E | Playwright |
+| Tests | node:test (backend), Playwright (e2e) |
+| CI/CD | GitHub Actions → GHCR + GitHub Releases |
 
 ## Project Structure
 
 ```
 ├── backend/             Express API
-│   └── src/
-│       ├── index.ts           Server entry
-│       ├── routes/jobs.ts     API endpoints
-│       └── services/
-│           └── downloadManager.ts  yt-dlp process management
+│   ├── src/
+│   │   ├── index.ts           Server entry
+│   │   ├── app.ts             Express app factory
+│   │   ├── config.ts          Environment variables
+│   │   ├── routes/jobs.ts     API endpoints
+│   │   └── services/
+│   │       ├── downloadManager.ts  yt-dlp process management
+│   │       └── urlValidator.ts     YouTube URL allowlist
+│   └── test/                  Unit + HTTP tests (node:test)
 ├── frontend/            React + Vite app
 │   ├── src/
 │   │   ├── App.tsx            Main component
@@ -103,7 +114,9 @@ A single container runs both the React frontend (served as static files) and the
 │   └── index.css              Theme + layout styles
 ├── e2e/                 Playwright tests
 │   └── tests/download.spec.ts
-├── DOCKERHUB.md         Docker Hub description
+├── docs/                Project documentation
+├── .github/workflows/release.yml  CI: test, build, release image
+├── CLAUDE.md            Guide for AI assistants
 ├── docker-compose.yml
 └── Dockerfile
 ```
@@ -114,18 +127,29 @@ Run each service locally for hot reloading:
 
 ```bash
 # Terminal 1 — Backend
-cd backend && npm install && npm run dev
+cd backend && npm ci && PORT=3001 npm run dev
 
 # Terminal 2 — Frontend (proxies /api to localhost:3001)
-cd frontend && npm install && npm run dev
+cd frontend && npm ci && npm run dev
 ```
+
+Backend tests: `cd backend && npm test`. More in [docs/development.md](docs/development.md).
 
 ## E2E Tests
 
 ```bash
 # Ensure containers are running, then:
-cd e2e && npx playwright test
+cd e2e && npm ci && npx playwright test   # or `npm run test:offline` to skip real YouTube downloads
 ```
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [HTTP API](docs/api.md)
+- [Configuration](docs/configuration.md)
+- [Development](docs/development.md)
+- [Security](docs/security.md)
+- [CI & release](docs/ci-release.md)
 
 ## License
 
