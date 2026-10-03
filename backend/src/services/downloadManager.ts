@@ -88,9 +88,7 @@ export function createJob(url: string): Job {
   return { ...job };
 }
 
-function startDownload(job: Job) {
-  job.status = 'downloading';
-
+export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist'>): string[] {
   const args: string[] = [
     '--socket-timeout', '30',
     '--retries', '3',
@@ -115,8 +113,20 @@ function startDownload(job: Job) {
     args.push('--no-playlist');
   }
 
+  if (config.ytdlpProxy) {
+    args.push('--proxy', config.ytdlpProxy);
+  }
+
   // `--` stops option parsing so the URL can never be read as a yt-dlp flag.
   args.push('--', job.url);
+
+  return args;
+}
+
+function startDownload(job: Job) {
+  job.status = 'downloading';
+
+  const args = buildYtDlpArgs(job);
 
   const ytProcess = spawn('yt-dlp', args);
 

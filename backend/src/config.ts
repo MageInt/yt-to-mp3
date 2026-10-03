@@ -12,4 +12,6 @@ export const config = {
   rateLimitWindowMs: intFromEnv('RATE_LIMIT_WINDOW_MINUTES', 15) * 60 * 1000,
   rateLimitMax: intFromEnv('RATE_LIMIT_MAX', 20),
   trustProxy: process.env.TRUST_PROXY === 'true',
+  // Proxy for all yt-dlp traffic, e.g. http://192.168.1.10:8890 (empty = direct connection).
+  ytdlpProxy: process.env.YTDLP_PROXY?.trim() || '',
 };

@@ -17,7 +17,7 @@ yt-to-mp3: paste a YouTube link, get an MP3. One container: Express 5 backend (A
 backend/src/{index,app,config}.ts   entry, Express app factory, env config
 backend/src/routes/jobs.ts          /api/jobs endpoints
 backend/src/services/               downloadManager (yt-dlp, SSE, cleanup), urlValidator (YouTube allowlist)
-backend/test/                       node:test unit + HTTP tests
+backend/test/                       node:test unit + HTTP tests + yt-dlp args
 frontend/src/                       App.tsx + components (UrlInput, ProgressBar, TrackList)
 e2e/tests/                          Playwright (tag @network = real YouTube download)
 Dockerfile, docker-compose.yml      Node 24 alpine, non-root, healthcheck
