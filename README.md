@@ -1,13 +1,13 @@
 # yt-to-mp3
 
 <p align="center">
-  <img src="frontend/public/yt2mp3logo.png" alt="yt-to-mp3" width="400" />
+  <img src="frontend/public/favicon.svg" alt="yt-to-mp3" width="96" />
 </p>
 
 [![Build, test & release](https://github.com/MageInt/yt-to-mp3/actions/workflows/release.yml/badge.svg)](https://github.com/MageInt/yt-to-mp3/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/MageInt/yt-to-mp3)](https://github.com/MageInt/yt-to-mp3/releases)
 
-Paste a YouTube link, get an MP3. Containerized, one command to run.
+Paste a YouTube link, pick a format, get the audio file. Containerized, one command to run.
 
 ## Table of Contents
 
@@ -51,19 +51,20 @@ services:
 docker compose up
 ```
 
-Open [http://localhost:8080](http://localhost:8080), paste a YouTube URL, click Download.
+Open [http://localhost:8080](http://localhost:8080), paste a YouTube URL, pick a format, click Download.
 
 Limits (concurrent jobs, playlist size, rate limit…) are configurable through environment variables: see [docs/configuration.md](docs/configuration.md).
 
 ## Features
 
 - One-click YouTube audio extraction
-- Playlist support — download entire playlists with individual track selection
+- Output formats: MP3, M4A (AAC), Opus, OGG (Vorbis), FLAC, WAV
+- Single-video by default: a link inside a playlist downloads only that video. Whole-playlist downloads can be turned on with `ENABLE_PLAYLISTS=true`
 - Runs entirely in Docker — no local dependencies needed
 - React frontend with loading and error states
-- yt-dlp + ffmpeg under the hood for best-quality MP3s
+- yt-dlp + ffmpeg under the hood, best available audio quality
 - Real-time download progress bar
-- Dark mode support
+- Clean dark UI, keyboard friendly (`/` to focus the link field), mobile ready
 - Hardened: YouTube-only URL allowlist, rate limiting, concurrency limits, security headers, non-root container
 
 ## Architecture
@@ -101,17 +102,21 @@ A single container runs both the React frontend (served as static files) and the
 │   │   ├── routes/jobs.ts     API endpoints
 │   │   └── services/
 │   │       ├── downloadManager.ts  yt-dlp process management
+│   │       ├── audioFormats.ts     Output formats (MP3, M4A, Opus…)
 │   │       └── urlValidator.ts     YouTube URL allowlist
 │   └── test/                  Unit + HTTP tests (node:test)
 ├── frontend/            React + Vite app
 │   ├── src/
-│   │   ├── App.tsx            Main component
-│   │   ├── components/
-│   │   │   ├── UrlInput.tsx   URL input + download button
-│   │   │   ├── ProgressBar.tsx  SSE progress bar
-│   │   │   └── TrackList.tsx    Multi-track playlist UI
-│   │   └── main.tsx           App entry
-│   └── index.css              Theme + layout styles
+│   ├── public/favicon.svg     App icon
+│   └── src/
+│       ├── App.tsx            Main component
+│       ├── api.ts             API types + helpers
+│       ├── components/
+│       │   ├── DownloadForm.tsx  URL field + format picker
+│       │   ├── ProgressBar.tsx   SSE progress / conversion
+│       │   └── TrackList.tsx     Multi-track playlist UI (ENABLE_PLAYLISTS)
+│       ├── styles/theme.css   Design tokens + fonts
+│       └── index.css          App styles
 ├── e2e/                 Playwright tests
 │   └── tests/download.spec.ts
 ├── docs/                Project documentation

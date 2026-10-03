@@ -69,6 +69,28 @@ test('POST /api/jobs rejects oversized body', async () => {
   assert.equal(res.status, 413);
 });
 
+test('GET /api/config exposes formats and playlist flag', async () => {
+  const res = await fetch(`${baseUrl}/api/config`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.playlistsEnabled, false);
+  assert.equal(body.defaultFormat, 'mp3');
+  assert.deepEqual(body.formats.map((f: { id: string }) => f.id), ['mp3', 'm4a', 'opus', 'ogg', 'flac', 'wav']);
+  assert.equal(body.formats[0].ytdlp, undefined);
+});
+
+test('POST /api/jobs rejects unsupported format', async () => {
+  const res = await postJob(JSON.stringify({ url: 'https://youtu.be/abc', format: 'exe' }));
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), { error: 'Unsupported audio format' });
+});
+
+test('POST /api/jobs rejects playlist-only URL by default', async () => {
+  const res = await postJob(JSON.stringify({ url: 'https://www.youtube.com/playlist?list=PL123' }));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Playlist downloads are disabled/);
+});
+
 test('unknown job returns 404', async () => {
   for (const path of ['/api/jobs/nope/progress', '/api/jobs/nope/file', '/api/jobs/nope/files/0']) {
     const res = await fetch(`${baseUrl}${path}`);

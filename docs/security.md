@@ -9,6 +9,8 @@ Public-facing web app with no authentication that runs an external downloader on
 | Risk | Mitigation | Where |
 |------|-----------|-------|
 | SSRF / arbitrary downloads | Host allowlist (YouTube only), no credentials or custom ports, 2048-char max | `services/urlValidator.ts` |
+| Mass downloads (channels, playlists) | URL must identify a video; playlists off by default (`ENABLE_PLAYLISTS`) | `services/urlValidator.ts` |
+| Arbitrary yt-dlp options via format | `format` checked against a fixed allowlist | `services/audioFormats.ts` |
 | yt-dlp option injection | `spawn` without a shell + `--` before the URL | `services/downloadManager.ts` |
 | Process / CPU exhaustion | `MAX_CONCURRENT_JOBS`, `DOWNLOAD_TIMEOUT_MINUTES` | `downloadManager.ts`, `config.ts` |
 | Disk exhaustion | `MAX_PLAYLIST_ITEMS`, TTL sweep every 5 min | `downloadManager.ts` |

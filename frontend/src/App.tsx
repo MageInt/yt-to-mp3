@@ -1,183 +1,209 @@
-import { useState, useEffect, useRef } from 'react';
-import UrlInput from './components/UrlInput';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import DownloadForm from './components/DownloadForm';
 import ProgressBar from './components/ProgressBar';
 import TrackList from './components/TrackList';
+import { API_BASE, FALLBACK_CONFIG, fetchConfig, triggerDownload, type AppConfig, type JobEvent, type TrackFile } from './api';
 
-interface TrackFile {
-  filename: string;
+type Status = 'idle' | 'pending' | 'downloading' | 'completed' | 'failed';
+
+function formatFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get('format');
 }
 
-const API_BASE = '/api';
-
 function App() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [configError, setConfigError] = useState(false);
+  const [format, setFormat] = useState<string>(() => formatFromUrl() ?? 'mp3');
+  const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState(0);
-  const [jobStatus, setJobStatus] = useState<'idle' | 'pending' | 'downloading' | 'completed' | 'failed'>('idle');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [files, setFiles] = useState<TrackFile[]>([]);
+  const [filename, setFilename] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark' || saved === 'light') {
-      setTheme(saved);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setTheme(prefersDark ? 'dark' : 'light');
-    }
+    fetchConfig()
+      .then((cfg) => {
+        setConfig(cfg);
+        setFormat((current) => (cfg.formats.some(f => f.id === current) ? current : cfg.defaultFormat));
+      })
+      .catch(() => {
+        setConfig(FALLBACK_CONFIG);
+        setConfigError(true);
+        setFormat(FALLBACK_CONFIG.defaultFormat);
+      });
+    return () => eventSourceRef.current?.close();
   }, []);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  // The chosen format lives in the URL so reloads and shared links keep it.
+  const changeFormat = (id: string) => {
+    setFormat(id);
+    const params = new URLSearchParams(window.location.search);
+    params.set('format', id);
+    window.history.replaceState(null, '', `?${params}`);
   };
 
-  useEffect(() => {
-    return () => {
-      eventSourceRef.current?.close();
-    };
+  const reset = useCallback(() => {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    setStatus('idle');
+    setProgress(0);
+    setError(null);
+    setJobId(null);
+    setFiles([]);
+    setFilename(null);
   }, []);
 
+  // Escape clears a finished or failed job.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (status === 'completed' || status === 'failed')) reset();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [status, reset]);
+
+  const fail = (message: string) => {
+    setStatus('failed');
+    setError(message);
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+  };
+
   const handleSubmit = async (url: string) => {
-    setLoading(true);
-    setError(null);
-    setProgress(0);
-    setJobStatus('pending');
+    reset();
+    setStatus('pending');
 
+    let id: string;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
       const res = await fetch(`${API_BASE}/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-        signal: controller.signal,
+        body: JSON.stringify({ url, format }),
+        signal: AbortSignal.timeout(30_000),
       });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to create job');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to start the download');
+      id = data.id;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        fail('Request timed out. The server may be busy, please try again.');
+      } else {
+        fail(err instanceof Error ? err.message : 'Something went wrong');
       }
+      return;
+    }
 
-      const { id } = await res.json();
-      setJobId(id);
-      setFiles([]);
-      setJobStatus('downloading');
+    setJobId(id);
+    setStatus('downloading');
 
-      const es = new EventSource(`${API_BASE}/jobs/${id}/progress`);
-      eventSourceRef.current = es;
+    const es = new EventSource(`${API_BASE}/jobs/${id}/progress`);
+    eventSourceRef.current = es;
 
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+    es.onmessage = (event) => {
+      const data: JobEvent = JSON.parse(event.data);
 
-        if (data.type === 'progress') {
-          setProgress(data.progress);
-        } else if (data.type === 'completed') {
-          setProgress(100);
-          setJobStatus('completed');
-          es.close();
-          eventSourceRef.current = null;
-
-          const trackFiles: TrackFile[] = data.files || [];
-
-          if (data.isPlaylist && trackFiles.length > 1) {
-            setFiles(trackFiles);
-          } else {
-            const link = document.createElement('a');
-            link.href = `${API_BASE}/jobs/${id}/file`;
-            link.download = data.filename || 'audio.mp3';
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
-        } else if (data.type === 'failed') {
-          setJobStatus('failed');
-          setError(data.error || 'Download failed');
-          es.close();
-          eventSourceRef.current = null;
-        }
-      };
-
-      es.onerror = () => {
-        setJobStatus('failed');
-        setError('Connection lost. Please try again.');
+      if (data.type === 'progress') {
+        setProgress(data.progress);
+      } else if (data.type === 'completed') {
         es.close();
         eventSourceRef.current = null;
-      };
-    } catch (err) {
-      setJobStatus('failed');
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Request timed out. The server may be busy. Please try again.');
-      } else {
-        setError(err instanceof Error ? err.message : 'Something went wrong');
+        setProgress(100);
+        setStatus('completed');
+        setFilename(data.filename);
+        if (data.isPlaylist && data.files.length > 1) {
+          setFiles(data.files);
+        } else {
+          triggerDownload(`${API_BASE}/jobs/${id}/file`, data.filename);
+        }
+      } else if (data.type === 'failed') {
+        fail(data.error || 'Download failed');
       }
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    es.onerror = () => fail('Connection lost. Please try again.');
   };
 
-  const handleRetry = () => {
-    setJobStatus('idle');
-    setError(null);
-    setProgress(0);
-    setJobId(null);
-    setFiles([]);
-  };
+  const formats = config?.formats ?? null;
+  const formatLabel = formats?.find(f => f.id === format)?.label ?? format.toUpperCase();
+  const busy = status === 'pending' || status === 'downloading';
 
   return (
-    <div className="app-container">
-      <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-        {theme === 'light' ? (
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </svg>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="5" />
-            <line x1="12" y1="1" x2="12" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="23" />
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-            <line x1="1" y1="12" x2="3" y2="12" />
-            <line x1="21" y1="12" x2="23" y2="12" />
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-          </svg>
-        )}
-      </button>
-      <div className="card">
-        <img src="/yt2mp3logo.png" alt="yt-to-mp3" className="logo" />
-        <p className="subtitle">
-          Paste a YouTube URL and download the audio as MP3
-        </p>
-        <UrlInput onDownload={handleSubmit} loading={loading} />
-        {(jobStatus === 'pending' || jobStatus === 'downloading' || jobStatus === 'completed') && (
-          <ProgressBar progress={progress} status={jobStatus} />
-        )}
-        {jobStatus === 'completed' && files.length > 0 && jobId && (
-          <TrackList files={files} jobId={jobId} startIndex={0} onRetry={handleRetry} />
-        )}
-        {error && (
-          <div className="error-block">
-            <p className="error-message">{error}</p>
-            {jobStatus === 'failed' && (
-              <button className="retry-btn" onClick={handleRetry}>
-                Try Again
-              </button>
-            )}
+    <>
+      <header className="topbar">
+        <a href="/" className="row brand" aria-label="yt-to-mp3 home">
+          <img src="/favicon.svg" alt="" width="24" height="24" />
+          <strong>yt-to-mp3</strong>
+        </a>
+      </header>
+
+      <main className="page stack">
+        <div className="intro">
+          <h1>Download audio from YouTube</h1>
+          <p className="muted">Paste a video link, pick a format, get the file.</p>
+        </div>
+
+        {configError && (
+          <div className="alert alert-warning" role="status">
+            <span className="icon" aria-hidden="true">!</span>
+            <div>Could not load server settings. Only MP3 is available.</div>
           </div>
         )}
-      </div>
-    </div>
+
+        <section className="card">
+          <DownloadForm
+            formats={formats}
+            format={format}
+            onFormatChange={changeFormat}
+            playlistsEnabled={config?.playlistsEnabled ?? false}
+            busy={busy}
+            onSubmit={handleSubmit}
+          />
+        </section>
+
+        {busy && <ProgressBar progress={progress} status={status} formatLabel={formatLabel} />}
+
+        {status === 'completed' && files.length > 0 && jobId && (
+          <TrackList files={files} jobId={jobId} onReset={reset} />
+        )}
+
+        {status === 'completed' && files.length === 0 && jobId && filename && (
+          <div className="alert alert-success result" role="status">
+            <span className="icon" aria-hidden="true">✓</span>
+            <div className="result-body">
+              <strong>Ready</strong>
+              <span className="result-file" title={filename}>{filename}</span>
+              <span className="muted">Your download should start automatically.</span>
+            </div>
+            <div className="result-actions">
+              <a className="btn btn-sm" href={`${API_BASE}/jobs/${jobId}/file`} download={filename}>
+                Download again
+              </a>
+              <button className="btn btn-ghost btn-sm" onClick={reset}>Convert another</button>
+            </div>
+          </div>
+        )}
+
+        {status === 'failed' && error && (
+          <div className="alert alert-danger result" role="alert">
+            <span className="icon" aria-hidden="true">✕</span>
+            <div className="result-body">
+              <strong>Download failed</strong>
+              <span className="error-text">{error}</span>
+            </div>
+            <div className="result-actions">
+              <button className="btn btn-sm" onClick={reset}>Try again</button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <footer className="footer muted">
+        Powered by yt-dlp &amp; ffmpeg · files are deleted after{' '}
+        <span className="mono num">{config?.jobTtlMinutes ?? 30}</span> min · <kbd>/</kbd> focuses the link field
+      </footer>
+    </>
   );
 }
 

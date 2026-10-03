@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { config } from '../config.js';
 import { createJob, getJob, subscribe, TooManyJobsError } from '../services/downloadManager.js';
+import { AUDIO_FORMATS, DEFAULT_FORMAT, getAudioFormat } from '../services/audioFormats.js';
 import { validateYoutubeUrl } from '../services/urlValidator.js';
 
 export const jobsRouter = Router();
@@ -14,15 +15,30 @@ const createJobLimiter = rateLimit({
   message: { error: 'Too many requests. Please try again later.' },
 });
 
+jobsRouter.get('/config', (_req, res) => {
+  res.json({
+    playlistsEnabled: config.enablePlaylists,
+    defaultFormat: DEFAULT_FORMAT,
+    jobTtlMinutes: config.jobTtlMs / 60000,
+    formats: AUDIO_FORMATS.map(({ id, label, description }) => ({ id, label, description })),
+  });
+});
+
 jobsRouter.post('/jobs', createJobLimiter, (req, res) => {
-  const result = validateYoutubeUrl(req.body?.url);
+  const result = validateYoutubeUrl(req.body?.url, { allowPlaylists: config.enablePlaylists });
   if (!result.ok) {
     res.status(400).json({ error: result.error });
     return;
   }
 
+  const format = getAudioFormat(req.body?.format);
+  if (!format) {
+    res.status(400).json({ error: 'Unsupported audio format' });
+    return;
+  }
+
   try {
-    const job = createJob(result.url);
+    const job = createJob(result.url, format, result.isPlaylist);
     res.status(201).json({ id: job.id, status: job.status });
   } catch (err) {
     if (err instanceof TooManyJobsError) {

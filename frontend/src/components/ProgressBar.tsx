@@ -1,31 +1,31 @@
 interface ProgressBarProps {
   progress: number;
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  status: 'pending' | 'downloading';
+  formatLabel: string;
 }
 
-function ProgressBar({ progress, status }: ProgressBarProps) {
-  if (status === 'pending') {
-    return (
-      <div className="progress-bar-container">
-        <div className="progress-bar-track">
-          <div className="progress-bar-skeleton" />
-        </div>
-        <span className="progress-bar-label">Starting...</span>
-      </div>
-    );
-  }
+function ProgressBar({ progress, status, formatLabel }: ProgressBarProps) {
+  const pct = Math.min(Math.round(progress), 100);
+  // yt-dlp reports 100% once the source is downloaded; ffmpeg conversion follows.
+  const converting = status === 'downloading' && pct >= 100;
 
-  const label = status === 'completed' ? 'Complete!' : `${Math.round(progress)}%`;
+  let label = 'Starting…';
+  if (status === 'downloading') label = converting ? `Converting to ${formatLabel}…` : 'Downloading…';
 
   return (
-    <div className="progress-bar-container">
-      <div className="progress-bar-track">
-        <div
-          className="progress-bar-fill"
-          style={{ width: `${Math.min(progress, 100)}%` }}
-        />
+    <div className="card status-card" role="status" aria-live="polite">
+      <div className="row status-row">
+        <span className="spinner accent" aria-hidden="true" />
+        <span>{label}</span>
+        {status === 'downloading' && !converting && <span className="mono num status-pct">{pct}&nbsp;%</span>}
       </div>
-      <span className="progress-bar-label">{label}</span>
+      {status === 'pending' || converting ? (
+        <div className="progress indeterminate"><span /></div>
+      ) : (
+        <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+          <span style={{ width: `${pct}%` }} />
+        </div>
+      )}
     </div>
   );
 }

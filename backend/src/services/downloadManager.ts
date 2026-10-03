@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import { config } from '../config.js';
+import type { AudioFormat } from './audioFormats.js';
 
 export interface JobFile {
   filename: string;
@@ -19,6 +20,7 @@ export interface Job {
   filePath?: string;
   filename?: string;
   files: JobFile[];
+  format: AudioFormat;
   isPlaylist: boolean;
   tmpDir: string;
   createdAt: number;
@@ -64,38 +66,33 @@ function cleanupJob(id: string) {
   sseClients.delete(id);
 }
 
-function hasPlaylistParam(url: string): boolean {
-  return /[?&]list=/.test(url);
-}
-
 function summarizeError(output: string): string {
   const errorLines = output.split('\n').filter(line => line.startsWith('ERROR:'));
   const summary = (errorLines.length > 0 ? errorLines.join('\n') : output).trim();
   return summary.length > MAX_ERROR_LENGTH ? `${summary.slice(0, MAX_ERROR_LENGTH)}…` : summary;
 }
 
-export function createJob(url: string): Job {
+export function createJob(url: string, format: AudioFormat, isPlaylist: boolean): Job {
   if (processes.size >= config.maxConcurrentJobs) {
     throw new TooManyJobsError();
   }
 
   const id = crypto.randomUUID();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'yt-dlp-'));
-  const isPlaylist = hasPlaylistParam(url);
-  const job: Job = { id, url, status: 'pending', progress: 0, files: [], isPlaylist, tmpDir, createdAt: Date.now() };
+  const job: Job = { id, url, status: 'pending', progress: 0, files: [], format, isPlaylist, tmpDir, createdAt: Date.now() };
   jobs.set(id, job);
   startDownload(job);
   return { ...job };
 }
 
-export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist'>): string[] {
+export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 'format'>): string[] {
   const args: string[] = [
     '--socket-timeout', '30',
     '--retries', '3',
     '--retry-sleep', '5',
     '--ignore-errors',
     '-x',
-    '--audio-format', 'mp3',
+    '--audio-format', job.format.ytdlp,
     '--audio-quality', '0',
     '--no-warnings',
     '--newline',
@@ -198,15 +195,15 @@ function startDownload(job: Job) {
     try {
       allFiles = fs.readdirSync(job.tmpDir);
     } catch {}
-    const mp3Files = allFiles.filter(f => f.endsWith('.mp3'));
-    if (mp3Files.length === 0) {
+    const audioFiles = allFiles.filter(f => f.endsWith(`.${job.format.ext}`)).sort();
+    if (audioFiles.length === 0) {
       job.status = 'failed';
       job.error = summarizeError(processOutput) || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found');
       emitEvent(job.id, { type: 'failed', error: job.error });
       return;
     }
 
-    job.files = mp3Files.map(f => ({
+    job.files = audioFiles.map(f => ({
       filename: f,
       path: path.join(job.tmpDir, f),
     }));
@@ -223,6 +220,7 @@ function startDownload(job: Job) {
       filename: job.filename,
       files: job.files.map(f => ({ filename: f.filename })),
       isPlaylist: job.isPlaylist,
+      format: job.format.id,
     });
   });
 
@@ -257,6 +255,7 @@ export function subscribe(jobId: string, onEvent: (data: string) => void): () =>
         filename: job.filename,
         files: job.files.map(f => ({ filename: f.filename })),
         isPlaylist: job.isPlaylist,
+        format: job.format.id,
       }));
     } else if (job.status === 'failed') {
       onEvent(JSON.stringify({ type: 'failed', error: job.error }));

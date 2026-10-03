@@ -1,12 +1,13 @@
 # Configuration
 
-All settings are environment variables read in `backend/src/config.ts`. Invalid or non-positive values fall back to the default.
+All settings are environment variables read in `backend/src/config.ts`. Invalid or non-positive values fall back to the default. Booleans accept `true`/`false`/`1`/`0`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | HTTP port. |
 | `MAX_CONCURRENT_JOBS` | `3` | Max yt-dlp processes running at once; extra requests get `429`. |
-| `MAX_PLAYLIST_ITEMS` | `50` | Max tracks downloaded from a playlist (`--playlist-end`). |
+| `ENABLE_PLAYLISTS` | `false` | `true` downloads the whole playlist when a URL has `list=`. `false`: only the video in the URL is downloaded, playlist-only URLs are refused. |
+| `MAX_PLAYLIST_ITEMS` | `50` | Max tracks downloaded from a playlist (`--playlist-end`). Only used when `ENABLE_PLAYLISTS=true`. |
 | `JOB_TTL_MINUTES` | `30` | Jobs and their files are deleted after this age (sweep every 5 min). |
 | `DOWNLOAD_TIMEOUT_MINUTES` | `10` | yt-dlp is killed after this duration. |
 | `RATE_LIMIT_WINDOW_MINUTES` | `15` | Rate-limit window for `POST /api/jobs`. |
