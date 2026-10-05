@@ -106,6 +106,29 @@ test.describe('yt-to-mp3', () => {
     await expect(page.getByText('Ready', { exact: true })).toBeVisible();
   });
 
+  test('uploaded cookies stay in the session after a download', { tag: '@network' }, async ({ page }) => {
+    const sessionResponse = page.waitForResponse('**/api/session');
+    await page.goto('/');
+    await sessionResponse;
+    await page.getByText('YouTube cookies').click();
+    await page.getByLabel('…or paste its content').fill('# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1893456000\tPREF\tf6=40000000\n');
+    await page.getByRole('button', { name: 'Save cookies' }).click();
+    await expect(page.locator('.cookies-status')).toBeVisible();
+
+    for (let i = 0; i < 2; i++) {
+      const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });
+      await page.getByLabel('YouTube link').fill('https://www.youtube.com/watch?v=VCuS3enPwKI');
+      await page.locator('button[type="submit"]').click();
+      await downloadPromise;
+      await expect(page.getByText('Ready', { exact: true })).toBeVisible();
+
+      const session = await (await page.request.get('/api/session')).json();
+      expect(session.hasCookies).toBe(true);
+      await page.getByRole('button', { name: 'Convert another' }).click();
+    }
+    await expect(page.locator('.cookies-status')).toBeVisible();
+  });
+
   test('downloads the chosen format (Opus) from a playlist video link', { tag: '@network' }, async ({ page }) => {
     await page.goto('/?format=opus');
     const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });

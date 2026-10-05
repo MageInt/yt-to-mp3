@@ -34,7 +34,8 @@ Users can upload a YouTube `cookies.txt` to get past the "not a bot" check. Thes
 - **Bound to one browser.** Session id: 256-bit random, in an `HttpOnly`, `SameSite=Strict` cookie (`Secure` over HTTPS). Never readable by page scripts, never shared between visitors.
 - **Minimized.** The upload is parsed strictly (Netscape format, RFC 6265 name/value charset, 300 cookies and 100 kB max). Only `youtube.com` / `google.com` cookies are kept, and the jar is rebuilt from the parsed fields, so nothing else from the file reaches yt-dlp.
 - **Never echoed.** The API only returns counts and dates, never names or values. The page clears the textarea after upload.
-- **RAM-only while in use.** yt-dlp needs a file: the jar is written to `SECRETS_TMP_DIR` (`/dev/shm`, tmpfs) in a `0700` directory with a `0600` file, for the duration of the process only, then deleted. If that directory is not writable, the download fails rather than falling back to disk.
+- **Reused across downloads.** The session keeps the cookies for every download until it expires; a download never consumes them.
+- **RAM-only while in use.** yt-dlp needs a file: for each download, a copy of the jar is written to `SECRETS_TMP_DIR` (`/dev/shm`, tmpfs) in a `0700` directory with a `0600` file, for the duration of the process only, then deleted. If that directory is not writable, the download fails rather than falling back to disk.
 - **Limited lifetime.** Wiped on *Forget*, after `SESSION_IDLE_MINUTES` of inactivity, after `SESSION_MAX_HOURS`, when evicted (`MAX_SESSIONS`), or on restart.
 - **Transport.** Over plain HTTP, cookies travel in clear text: the UI warns about it outside `localhost`. Put the app behind an HTTPS reverse proxy (`TRUST_PROXY=true`) if it is reachable beyond a trusted LAN.
 

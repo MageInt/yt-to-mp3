@@ -118,7 +118,10 @@ const CookiesPanel = forwardRef<HTMLDetailsElement, Props>(function CookiesPanel
           <ul className="body tight-list">
             <li>Kept in memory only, linked to this browser through a private session cookie. Nothing is stored on disk or in a database.</li>
             <li>Only <span className="mono">youtube.com</span> and <span className="mono">google.com</span> cookies are kept, the rest of the file is dropped.</li>
-            <li>While a download runs, yt-dlp reads them from a RAM-only temporary file that is deleted when it finishes.</li>
+            <li>
+              Reused for all your downloads while the session lasts. During each download, yt-dlp reads a temporary
+              copy kept in RAM only; that copy is deleted when the download ends, your saved cookies stay.
+            </li>
             <li>Never sent back to the browser, never shared with other visitors.</li>
             <li>
               Wiped when you click <em>Forget</em>, after{' '}
