@@ -1,22 +1,26 @@
 // Isolated-world bridge between the page hook (inject.js) and the extension.
-// Works in Firefox and Chromium: runtime messages are JSON in Chromium, so the capture is handed
-// over in base64 chunks pulled by the background script.
+// Works in Firefox and Chromium. The page only sends JSON strings (Firefox wraps page objects in
+// Xrays that forbid copying binary data), and runtime messages are JSON in Chromium, so the capture
+// stays base64 and is pulled by the background script in chunks.
 'use strict';
 
 const api = globalThis.browser ?? globalThis.chrome;
 const CHANNEL_IN = 'yt2mp3:ext';
 const CHANNEL_OUT = 'yt2mp3:page';
-const CHUNK_SIZE = 2 * 1024 * 1024;
+// Base64 characters per chunk (multiple of 4, ~2 MB of audio).
+const CHUNK_CHARS = 4 * 699_051;
 const pending = new Map();
 let nextId = 1;
 let transfer = null;
 
 window.addEventListener('message', (event) => {
   if (event.source !== window || event.data?.channel !== CHANNEL_OUT) return;
-  const resolve = pending.get(event.data.id);
-  if (resolve) {
-    pending.delete(event.data.id);
-    resolve(event.data.result);
+  const id = event.data.id;
+  const json = event.data.json;
+  const resolve = pending.get(id);
+  if (resolve && typeof json === 'string') {
+    pending.delete(id);
+    resolve(JSON.parse(json));
   }
 });
 
@@ -35,14 +39,6 @@ function askPage(cmd, timeoutMs = 5000) {
   });
 }
 
-function toBase64(bytes) {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-}
-
 const handlers = {
   status: () => askPage('status'),
 
@@ -50,19 +46,19 @@ const handlers = {
   async export() {
     const result = await askPage('export', 30000);
     if (result.error) return { ok: false, error: result.error };
-    transfer = { id: crypto.randomUUID(), bytes: new Uint8Array(result.buffer).slice() };
+    transfer = { id: crypto.randomUUID(), base64: result.base64 };
     return {
       ok: true,
       transferId: transfer.id,
-      size: transfer.bytes.byteLength,
-      chunkSize: CHUNK_SIZE,
-      status: JSON.parse(JSON.stringify(result.status)),
+      size: transfer.base64.length,
+      chunkSize: CHUNK_CHARS,
+      status: result.status,
     };
   },
 
   chunk({ transferId, index }) {
     if (!transfer || transfer.id !== transferId) return { ok: false, error: 'The capture is no longer available. Try again.' };
-    return { ok: true, data: toBase64(transfer.bytes.subarray(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE)) };
+    return { ok: true, data: transfer.base64.slice(index * CHUNK_CHARS, (index + 1) * CHUNK_CHARS) };
   },
 
   release({ transferId }) {

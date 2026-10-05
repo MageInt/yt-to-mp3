@@ -23,13 +23,7 @@ const ask = (cmd) => page.evaluate((cmd) => new Promise((resolve) => {
   const onMessage = (e) => {
     if (e.data?.channel === 'yt2mp3:page' && e.data.id === id) {
       window.removeEventListener('message', onMessage);
-      const r = e.data.result;
-      if (r.buffer) {
-        const bytes = new Uint8Array(r.buffer);
-        let bin = '';
-        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        resolve({ status: r.status, base64: btoa(bin) });
-      } else resolve(r);
+      resolve(JSON.parse(e.data.json));
     }
   };
   window.addEventListener('message', onMessage);
@@ -53,7 +47,8 @@ console.log('final status:', JSON.stringify(status));
 fs.mkdirSync('/w/shots', { recursive: true });
 const exported = await ask('export');
 if (exported.base64) {
-  fs.writeFileSync('/w/shots/capture.' + exported.status.ext, Buffer.from(exported.base64, 'base64'));
-  console.log('exported', exported.status.mime, Buffer.from(exported.base64, 'base64').length, 'bytes');
+  const bytes = Buffer.from(exported.base64, 'base64');
+  fs.writeFileSync('/w/shots/capture.' + exported.status.ext, bytes);
+  console.log('exported', exported.status.mime, bytes.length, 'bytes');
 } else console.log('export error:', exported.error);
 await browser.close();

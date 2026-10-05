@@ -28,7 +28,7 @@ backend/test/                       node:test unit + HTTP tests + yt-dlp args + 
 frontend/src/                       App.tsx + components (DownloadForm, ProgressBar, TrackList, CookiesPanel), api.ts
 frontend/src/styles/theme.css       Dorian UI tokens (dark only) + fonts/; app styles in src/index.css
 e2e/tests/                          Playwright (tag @network = real YouTube download)
-e2e/tools/extension-*.mjs           manual checks on real YouTube (not CI): hook only, full Chromium build
+e2e/tools/extension-*                manual checks on real YouTube (not CI): hook only, full Chromium build, real Firefox (.py)
 extension/                          MV3 extension, shared src/ (inject.js MAIN-world hook, content.js, background.js,
                                     popup/, options/), manifests/{firefox,chromium}.json, scripts/build.mjs → dist/<target>
 Dockerfile, docker-compose.yml      Node 24 alpine, non-root, healthcheck
@@ -54,7 +54,7 @@ and `podman build --format docker` (otherwise the HEALTHCHECK is dropped).
 - UI follows the Dorian UI charter (load the `dorian-ui` skill before UI work): tokens only, no hardcoded colors.
 - Playlists are disabled by default (`ENABLE_PLAYLISTS`); keep the playlist code paths working.
 - Downloads go through the queue in `downloadManager.ts` (`pump()`); never spawn yt-dlp outside it. Keep `MAX_PARALLEL_PER_SESSION` semantics: one account's cookies are not used in parallel.
-- Extension: nothing must be added to YouTube's page beyond the prototype hooks (no globals, no DOM); keep DRM content refused. Keep the code valid for both browsers: `const api = globalThis.browser ?? globalThis.chrome`, `sendResponse` + `return true` in listeners, JSON-only messages (binary goes in base64 chunks).
+- Extension: nothing must be added to YouTube's page beyond the prototype hooks (no globals, no DOM); keep DRM content refused. Keep the code valid for both browsers: `const api = globalThis.browser ?? globalThis.chrome`, `sendResponse` + `return true` in listeners, JSON-only messages (binary goes in base64 chunks), and only strings from the page to the content script (Firefox Xrays).
 - User cookies are secrets: memory only, never logged, never returned by the API, written only to `SECRETS_TMP_DIR` while yt-dlp runs. Jobs must stay bound to their session. Read `docs/security.md#user-cookies` before touching sessions or cookies.
 - TypeScript strict, ESM (`.js` suffix in backend relative imports), 2-space indent, single quotes.
 - Every new env variable goes through `backend/src/config.ts`.

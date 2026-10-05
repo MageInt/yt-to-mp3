@@ -9,7 +9,7 @@ One codebase, two builds:
 | `dist/firefox` | Firefox 140+ | `manifests/firefox.json` (event page, SVG icons) |
 | `dist/chromium` | Brave, Chrome, Edge, Vivaldi… (Chromium 120+) | `manifests/chromium.json` (service worker, PNG icons) |
 
-Status: **prototype**. The Chromium build was run end to end on real YouTube (capture → conversion → download, see [Testing](#testing)). The Firefox build shares the same code and passes `web-ext lint`, but has not been run inside Firefox yet.
+Status: **prototype**. Both builds were run end to end on real YouTube (capture → conversion → download, see [Testing](#testing)): Chromium via Playwright, Firefox 156 via geckodriver.
 
 ## How it works
 
@@ -21,11 +21,11 @@ inject.js hooks MediaSource ─postMessage─▶ content.js ◀─ base64 chunks
 ```
 
 - `src/inject.js` (MAIN world, `document_start`): wraps `MediaSource.prototype.addSourceBuffer`, `SourceBuffer.prototype.appendBuffer` and `changeType` with `Proxy`s (native names/`toString` kept). For each audio SourceBuffer it stores the appended bytes (duplicates skipped by fingerprint, 300 MB cap) and merges the `buffered` ranges to know which part of the video is covered. Ads are ignored (`ad-showing` on the player). Captures are matched to the current video id; the last 4 are kept.
-- `src/content.js`: bridge between the page (`window.postMessage`) and the extension. Chromium runtime messages are JSON only, so the capture is handed over in 2 MB base64 chunks the background pulls (`export` → `chunk`… → `release`).
+- `src/content.js`: bridge between the page (`window.postMessage`) and the extension. The page only ever sends **JSON strings** (the capture as base64 inside): in Firefox, page objects reach content scripts through Xray wrappers, and copying binary data out of them fails with `Permission denied to access property "constructor"`. Chromium runtime messages are JSON only too, so the base64 is handed to the background in ~2 MB chunks it pulls (`export` → `chunk`… → `release`).
 - `src/background.js`: rebuilds the capture, posts it to `/api/convert?format=…&title=…&artist=…&delivery=link`, then calls `downloads.download` on the returned server URL. A Chromium service worker cannot create blob URLs, so the file is served by the server (10 min capability link). Badge: `…`, `✓`, `!`. Runs even if the popup is closed.
 - `src/popup/`: capture status (title, covered time, gaps, size), format picker (6 formats + *Original*: same audio, no re-encoding), action.
 - `src/options/`: server URL + token, tested with `GET /api/convert/ping`; asks for host access to that server only.
-- Cross-browser rules: `const api = globalThis.browser ?? globalThis.chrome`, listeners answer with `sendResponse` + `return true`, messages are JSON.
+- Cross-browser rules: `const api = globalThis.browser ?? globalThis.chrome`, listeners answer with `sendResponse` + `return true`, messages are JSON, and nothing but strings crosses from the page to the content script.
 
 The raw capture is a valid WebM (Opus) or fragmented MP4 (AAC) stream: init segment + media segments in order. ffmpeg regenerates timestamps (`-fflags +genpts`); Opus → `.opus`, AAC → `.m4a` and *Original* are remuxed without re-encoding.
 
@@ -99,6 +99,7 @@ If the extension was installed while a video was already playing, reload the tab
 - Outside CI (YouTube serves only ~60 s to headless browsers and may block CI IPs; use short videos, default `jNQXAC9IVRw`, 19 s):
   - `e2e/tools/extension-capture.mjs`: injects `inject.js` into Chromium, plays a video, exports the capture to `shots/capture.webm`.
   - `e2e/tools/extension-chromium.mjs`: loads the **real Chromium build** (persistent context), configures it, captures on YouTube, converts through a running server (`mp3` and `original` by default) and checks the downloads. Build it first with `EXTRA_HOST_PERMISSIONS=http://localhost/* node scripts/build.mjs chromium` (test-only pre-grant: automated browsers cannot click the permission prompt).
+  - `e2e/tools/extension-firefox.py`: same check in a **real Firefox** through geckodriver (raw WebDriver, no dependency). Run geckodriver with `--allow-system-access` (e.g. from `selenium/standalone-firefox`, `--entrypoint` geckodriver): WebDriver cannot navigate to `moz-extension://`, so the test opens the options page from the browser chrome and drives the extension from there. Zip `dist/firefox` (built with `EXTRA_HOST_PERMISSIONS`) and pass it as `ADDON_ZIP`.
 - Server side: `backend/test/convert.test.ts` (fake ffmpeg fixture).
 
 `npm audit` in `extension/` reports `node-forge` (via `web-ext` → `@devicefarmer/adbkit`, Android debugging) with no fixed release. It is a dev-only tool; nothing from `node_modules` is packaged in the extension.

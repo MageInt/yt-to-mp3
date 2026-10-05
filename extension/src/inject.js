@@ -212,23 +212,25 @@
     const capture = currentCapture();
     if (!capture) return { error: 'Nothing captured for this video yet.' };
     if (isProtected()) return { error: 'This video is DRM-protected: its audio cannot be saved.' };
-    const out = new Uint8Array(capture.bytes);
-    let offset = 0;
+    // Base64 text: only strings cross into Firefox content scripts safely (page objects reach them
+    // through Xray wrappers, which forbid copying binary data).
+    let binary = '';
     for (const chunk of capture.chunks) {
-      out.set(chunk, offset);
-      offset += chunk.byteLength;
+      for (let i = 0; i < chunk.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, chunk.subarray(i, i + 0x8000));
+      }
     }
-    return { status: status(), buffer: out.buffer };
+    return { status: status(), base64: btoa(binary) };
   }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.data?.channel !== CHANNEL_IN) return;
     const { id, cmd } = event.data;
+    // Results travel as a JSON string, never as objects (see exportCapture).
     if (cmd === 'status') {
-      window.postMessage({ channel: CHANNEL_OUT, id, result: status() }, '*');
+      window.postMessage({ channel: CHANNEL_OUT, id, json: JSON.stringify(status()) }, '*');
     } else if (cmd === 'export') {
-      const result = exportCapture();
-      window.postMessage({ channel: CHANNEL_OUT, id, result }, '*', result.buffer ? [result.buffer] : []);
+      window.postMessage({ channel: CHANNEL_OUT, id, json: JSON.stringify(exportCapture()) }, '*');
     }
   });
 })();

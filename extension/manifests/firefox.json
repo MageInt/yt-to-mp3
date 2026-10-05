@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "yt-to-mp3 capture",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Captures the audio of a YouTube video while it plays and converts it on your yt-to-mp3 server.",
   "browser_specific_settings": {
     "gecko": {
