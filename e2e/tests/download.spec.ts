@@ -58,6 +58,37 @@ test.describe('yt-to-mp3', () => {
     await expect(page.getByText('only this video will be downloaded')).toBeVisible();
   });
 
+  test('YouTube cookies: disclaimer, validation, upload and forget', async ({ page, context }) => {
+    const sessionResponse = page.waitForResponse('**/api/session');
+    await page.goto('/');
+    await sessionResponse;
+    const sid = (await context.cookies()).find(c => c.name === 'yt2mp3_sid');
+    expect(sid?.httpOnly).toBe(true);
+    expect(sid?.sameSite).toBe('Strict');
+
+    await page.getByText('YouTube cookies').click();
+    await expect(page.getByText('Your cookies are your signed-in Google account')).toBeVisible();
+
+    const textarea = page.getByLabel('…or paste its content');
+    await textarea.fill('SID=abc; HSID=def');
+    await page.getByRole('button', { name: 'Save cookies' }).click();
+    await expect(page.locator('.cookies-panel .error')).toContainText('Netscape');
+
+    await textarea.fill('# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1893456000\tPREF\tf6=40000000\n');
+    await page.getByRole('button', { name: 'Save cookies' }).click();
+    await expect(page.locator('.cookies-status')).toContainText('1 cookies');
+    await expect(textarea).toHaveValue('');
+
+    // Survives a reload (same browser session), but the values never come back to the page.
+    await page.reload();
+    await page.getByText('YouTube cookies').click();
+    await expect(page.locator('.cookies-status')).toBeVisible();
+    expect(await page.content()).not.toContain('f6=40000000');
+
+    await page.getByRole('button', { name: 'Forget cookies' }).click();
+    await expect(page.locator('.cookies-status')).toHaveCount(0);
+  });
+
   test('button is disabled when input is empty', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('button[type="submit"]')).toBeDisabled();

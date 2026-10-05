@@ -23,7 +23,14 @@ export const config = {
   enablePlaylists: boolFromEnv('ENABLE_PLAYLISTS', false),
   // Proxy for all yt-dlp traffic, e.g. http://192.168.1.10:8890 (empty = direct connection).
   ytdlpProxy: process.env.YTDLP_PROXY?.trim() || '',
-  // Netscape cookies.txt exported from a YouTube session, to get past the "not a bot" check.
-  // Copied into each job's temp dir, so it can be mounted read-only.
+  // Server-wide fallback cookies.txt, used when the user's session has no cookies of its own.
   ytdlpCookiesFile: process.env.YTDLP_COOKIES_FILE?.trim() || '',
+  // RAM-backed directory where cookie jars are written for the lifetime of a yt-dlp process only.
+  secretsTmpDir: process.env.SECRETS_TMP_DIR?.trim() || '/dev/shm',
+  // Per-browser sessions (memory only) holding user-uploaded YouTube cookies.
+  sessionIdleMs: intFromEnv('SESSION_IDLE_MINUTES', 120) * 60 * 1000,
+  sessionMaxMs: intFromEnv('SESSION_MAX_HOURS', 24) * 60 * 60 * 1000,
+  maxSessions: intFromEnv('MAX_SESSIONS', 1000),
+  // 'auto': Secure flag when the request came over HTTPS (needs TRUST_PROXY behind a TLS proxy).
+  cookieSecure: (process.env.COOKIE_SECURE?.trim().toLowerCase() || 'auto') as 'auto' | 'true' | 'false',
 };

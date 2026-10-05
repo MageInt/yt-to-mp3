@@ -5,6 +5,8 @@ import os from 'os';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import type { AudioFormat } from './audioFormats.js';
+import { parseNetscapeCookies, serializeNetscapeCookies, type Cookie } from './cookieJar.js';
+import { replaceSessionCookies } from './sessionStore.js';
 
 export interface JobFile {
   filename: string;
@@ -17,6 +19,8 @@ export interface Job {
   status: 'pending' | 'downloading' | 'completed' | 'failed';
   progress: number;
   error?: string;
+  // Machine-readable failure reason for the UI ('bot_check': YouTube wants a signed-in session).
+  errorCode?: 'bot_check';
   filePath?: string;
   filename?: string;
   files: JobFile[];
@@ -24,6 +28,22 @@ export interface Job {
   isPlaylist: boolean;
   tmpDir: string;
   createdAt: number;
+  // Owner: only this session can read the job's progress and files.
+  sessionId: string;
+  cookieSource: CookieSource;
+  // RAM-only directory holding the cookie jar while yt-dlp runs.
+  secretsDir?: string;
+}
+
+export type CookieSource = 'session' | 'server' | null;
+
+export interface CreateJobParams {
+  url: string;
+  format: AudioFormat;
+  isPlaylist: boolean;
+  sessionId: string;
+  // Cookies uploaded by the user for this session, if any. Falls back to YTDLP_COOKIES_FILE.
+  sessionCookies: Cookie[] | null;
 }
 
 const jobs = new Map<string, Job>();
@@ -50,6 +70,16 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL).unref();
 
+function removeSecrets(job: Job) {
+  if (!job.secretsDir) return;
+  try {
+    fs.rmSync(job.secretsDir, { recursive: true, force: true });
+  } catch (err) {
+    console.error(`[downloadManager] Could not remove cookie jar for job ${job.id}:`, err);
+  }
+  job.secretsDir = undefined;
+}
+
 function cleanupJob(id: string) {
   const job = jobs.get(id);
   if (job) {
@@ -58,6 +88,7 @@ function cleanupJob(id: string) {
       proc.kill();
       processes.delete(id);
     }
+    removeSecrets(job);
     try {
       if (job.tmpDir) fs.rmSync(job.tmpDir, { recursive: true, force: true });
     } catch {}
@@ -68,45 +99,94 @@ function cleanupJob(id: string) {
 
 const COOKIES_FILENAME = 'cookies.txt';
 
-const BOT_CHECK_MESSAGE =
-  'YouTube is asking to confirm this is not a bot (common on VPN or datacenter IPs). '
-  + 'The server administrator needs to set YTDLP_COOKIES_FILE, see docs/configuration.md.';
+export const BOT_CHECK_ERRORS: Record<'none' | 'session' | 'server', string> = {
+  none: 'YouTube is asking to confirm this is not a bot (common on VPN or datacenter IPs). '
+    + 'Add your YouTube cookies in the "YouTube cookies" section, then try again.',
+  session: 'YouTube is asking to confirm this is not a bot, even with your cookies. '
+    + 'They may have expired or been revoked: export fresh ones and upload them again.',
+  server: 'YouTube is asking to confirm this is not a bot, even with the server cookies. '
+    + 'Add your own YouTube cookies in the "YouTube cookies" section, then try again.',
+};
 
-export function summarizeError(output: string): string {
-  if (/Sign in to confirm you.re not a bot/i.test(output)) {
-    return config.ytdlpCookiesFile
-      ? 'YouTube is asking to confirm this is not a bot, even with the configured cookies. They may have expired: export them again.'
-      : BOT_CHECK_MESSAGE;
+function isBotCheck(output: string): boolean {
+  return /Sign in to confirm you.re not a bot/i.test(output);
+}
+
+export function summarizeError(output: string, cookieSource: CookieSource = null): string {
+  if (isBotCheck(output)) {
+    return BOT_CHECK_ERRORS[cookieSource ?? 'none'];
   }
   const errorLines = output.split('\n').filter(line => line.startsWith('ERROR:'));
   const summary = (errorLines.length > 0 ? errorLines.join('\n') : output).trim();
   return summary.length > MAX_ERROR_LENGTH ? `${summary.slice(0, MAX_ERROR_LENGTH)}…` : summary;
 }
 
-export function createJob(url: string, format: AudioFormat, isPlaylist: boolean): Job {
+function loadServerCookies(): Cookie[] | null {
+  if (!config.ytdlpCookiesFile) return null;
+  const result = parseNetscapeCookies(fs.readFileSync(config.ytdlpCookiesFile, 'utf8'));
+  if (!result.ok) throw new Error(`YTDLP_COOKIES_FILE: ${result.error}`);
+  return result.cookies;
+}
+
+// Writes the jar to a fresh 0700 directory on a RAM-backed filesystem; never to the job's disk dir.
+function writeCookieJar(job: Job, cookies: Cookie[]): string {
+  job.secretsDir = fs.mkdtempSync(path.join(config.secretsTmpDir, 'yt2mp3-'));
+  fs.chmodSync(job.secretsDir, 0o700);
+  const jarPath = path.join(job.secretsDir, COOKIES_FILENAME);
+  fs.writeFileSync(jarPath, serializeNetscapeCookies(cookies), { mode: 0o600, flag: 'wx' });
+  return jarPath;
+}
+
+// yt-dlp saves the jar on exit, including cookies YouTube rotated: keep the session fresh.
+function refreshSessionCookies(job: Job) {
+  if (job.cookieSource !== 'session' || !job.secretsDir) return;
+  try {
+    const result = parseNetscapeCookies(fs.readFileSync(path.join(job.secretsDir, COOKIES_FILENAME), 'utf8'));
+    if (result.ok) replaceSessionCookies(job.sessionId, result.cookies);
+  } catch {}
+}
+
+export function createJob(params: CreateJobParams): Job {
   if (processes.size >= config.maxConcurrentJobs) {
     throw new TooManyJobsError();
   }
 
   const id = crypto.randomUUID();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'yt-dlp-'));
-  const job: Job = { id, url, status: 'pending', progress: 0, files: [], format, isPlaylist, tmpDir, createdAt: Date.now() };
+  const job: Job = {
+    id,
+    url: params.url,
+    status: 'pending',
+    progress: 0,
+    files: [],
+    format: params.format,
+    isPlaylist: params.isPlaylist,
+    tmpDir,
+    createdAt: Date.now(),
+    sessionId: params.sessionId,
+    cookieSource: null,
+  };
   jobs.set(id, job);
-  startDownload(job);
+  startDownload(job, params.sessionCookies);
   return { ...job };
 }
 
-export function checkCookiesFile(): void {
+export function checkCookiesSetup(): void {
+  try {
+    fs.accessSync(config.secretsTmpDir, fs.constants.W_OK);
+  } catch {
+    console.error(`[downloadManager] SECRETS_TMP_DIR=${config.secretsTmpDir} is not writable: downloads with cookies will fail`);
+  }
   if (!config.ytdlpCookiesFile) return;
   try {
     fs.accessSync(config.ytdlpCookiesFile, fs.constants.R_OK);
-    console.log(`[downloadManager] Using cookies file ${config.ytdlpCookiesFile}`);
+    console.log(`[downloadManager] Using server cookies file ${config.ytdlpCookiesFile} as fallback`);
   } catch {
     console.error(`[downloadManager] YTDLP_COOKIES_FILE=${config.ytdlpCookiesFile} is not readable by this user (uid ${process.getuid?.()})`);
   }
 }
 
-export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 'format'>): string[] {
+export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 'format'>, cookieJarPath?: string): string[] {
   const args: string[] = [
     '--socket-timeout', '30',
     '--retries', '3',
@@ -135,9 +215,8 @@ export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 
     args.push('--proxy', config.ytdlpProxy);
   }
 
-  if (config.ytdlpCookiesFile) {
-    // yt-dlp rewrites the cookie jar on exit: point it at the job's private copy.
-    args.push('--cookies', path.join(job.tmpDir, COOKIES_FILENAME));
+  if (cookieJarPath) {
+    args.push('--cookies', cookieJarPath);
   }
 
   // `--` stops option parsing so the URL can never be read as a yt-dlp flag.
@@ -146,22 +225,29 @@ export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 
   return args;
 }
 
-function startDownload(job: Job) {
+function startDownload(job: Job, sessionCookies: Cookie[] | null) {
   job.status = 'downloading';
 
-  if (config.ytdlpCookiesFile) {
-    try {
-      fs.copyFileSync(config.ytdlpCookiesFile, path.join(job.tmpDir, COOKIES_FILENAME));
-      fs.chmodSync(path.join(job.tmpDir, COOKIES_FILENAME), 0o600);
-    } catch (err) {
-      console.error('[downloadManager] Cannot read cookies file:', err);
-      job.status = 'failed';
-      job.error = 'Server misconfiguration: the YouTube cookies file cannot be read.';
-      return;
+  let cookieJarPath: string | undefined;
+  try {
+    const serverCookies = sessionCookies?.length ? null : loadServerCookies();
+    const cookies = sessionCookies?.length ? sessionCookies : serverCookies;
+    if (cookies) {
+      job.cookieSource = sessionCookies?.length ? 'session' : 'server';
+      cookieJarPath = writeCookieJar(job, cookies);
     }
+  } catch (err) {
+    // Never log the error object itself in a way that could include cookie contents.
+    console.error(`[downloadManager] Cannot prepare cookies for job ${job.id}: ${(err as Error).message}`);
+    removeSecrets(job);
+    job.status = 'failed';
+    job.error = job.cookieSource === 'session'
+      ? 'Server misconfiguration: cookies cannot be kept in memory (SECRETS_TMP_DIR).'
+      : 'Server misconfiguration: the YouTube cookies file cannot be used.';
+    return;
   }
 
-  const args = buildYtDlpArgs(job);
+  const args = buildYtDlpArgs(job, cookieJarPath);
 
   const ytProcess = spawn('yt-dlp', args);
 
@@ -170,6 +256,7 @@ function startDownload(job: Job) {
   const processTimeout = setTimeout(() => {
     if (processes.has(job.id)) {
       ytProcess.kill('SIGTERM');
+      removeSecrets(job);
       job.status = 'failed';
       job.error = `Download timed out after ${config.downloadTimeoutMs / 60000} minutes. Try again later.`;
       emitEvent(job.id, { type: 'failed', error: job.error });
@@ -223,6 +310,8 @@ function startDownload(job: Job) {
     clearInterval(progressTimer);
     processes.delete(job.id);
     clearTimeout(processTimeout);
+    refreshSessionCookies(job);
+    removeSecrets(job);
 
     // Already failed (timeout) or cleaned up: don't overwrite the reported state.
     if (job.status === 'failed' || !jobs.has(job.id)) {
@@ -236,8 +325,9 @@ function startDownload(job: Job) {
     const audioFiles = allFiles.filter(f => f.endsWith(`.${job.format.ext}`)).sort();
     if (audioFiles.length === 0) {
       job.status = 'failed';
-      job.error = summarizeError(processOutput) || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found');
-      emitEvent(job.id, { type: 'failed', error: job.error });
+      job.error = summarizeError(processOutput, job.cookieSource) || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found');
+      if (isBotCheck(processOutput)) job.errorCode = 'bot_check';
+      emitEvent(job.id, { type: 'failed', error: job.error, code: job.errorCode });
       return;
     }
 
@@ -266,6 +356,7 @@ function startDownload(job: Job) {
     clearInterval(progressTimer);
     processes.delete(job.id);
     clearTimeout(processTimeout);
+    removeSecrets(job);
     job.status = 'failed';
     job.error = err.message;
     emitEvent(job.id, { type: 'failed', error: err.message });
@@ -296,7 +387,7 @@ export function subscribe(jobId: string, onEvent: (data: string) => void): () =>
         format: job.format.id,
       }));
     } else if (job.status === 'failed') {
-      onEvent(JSON.stringify({ type: 'failed', error: job.error }));
+      onEvent(JSON.stringify({ type: 'failed', error: job.error, code: job.errorCode }));
     } else if (job.status === 'downloading' && job.progress > 0) {
       onEvent(JSON.stringify({ type: 'progress', progress: job.progress }));
     }

@@ -13,7 +13,12 @@ All settings are environment variables read in `backend/src/config.ts`. Invalid 
 | `RATE_LIMIT_WINDOW_MINUTES` | `15` | Rate-limit window for `POST /api/jobs`. |
 | `RATE_LIMIT_MAX` | `20` | Max job creations per IP per window. |
 | `YTDLP_PROXY` | _(empty)_ | Proxy for all yt-dlp traffic (`--proxy`), e.g. `http://192.168.1.10:8890` or `socks5://host:1080`. Empty means a direct connection. If the proxy is unreachable, downloads fail: there is no fallback to a direct connection. |
-| `YTDLP_COOKIES_FILE` | _(empty)_ | Path (inside the container) to a Netscape `cookies.txt` exported from YouTube. Needed when YouTube answers "Sign in to confirm you're not a bot". Can be mounted read-only: each job works on its own copy. See below. |
+| `YTDLP_COOKIES_FILE` | _(empty)_ | Server-wide fallback: path (inside the container) to a Netscape `cookies.txt`, used for users who did not upload their own. Can be mounted read-only. See below. |
+| `SECRETS_TMP_DIR` | `/dev/shm` | RAM-backed directory where a cookie jar is written while yt-dlp runs (deleted right after). If it is not writable, downloads with cookies fail instead of touching the disk. |
+| `SESSION_IDLE_MINUTES` | `120` | A session (and the cookies it holds) is wiped after this much inactivity. |
+| `SESSION_MAX_HOURS` | `24` | Hard limit on a session's lifetime, whatever the activity. |
+| `MAX_SESSIONS` | `1000` | Max sessions kept in memory; the oldest is dropped beyond. |
+| `COOKIE_SECURE` | `auto` | `Secure` flag on the session cookie. `auto`: when the request came over HTTPS (behind a TLS proxy this needs `TRUST_PROXY=true`). `true` / `false` force it. |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so the rate limit uses the real client IP (`X-Forwarded-For`). |
 
 Set in the image (no need to change): `NODE_ENV=production`, `TMPDIR=/app/tmp`.
@@ -27,7 +32,8 @@ Point `YTDLP_PROXY` at the HTTP proxy of a Gluetun container (`HTTPPROXY=on`) us
 YouTube shows this check to IPs it distrusts: VPN exits (Gluetun/NordVPN…), datacenters, servers that download a lot. The UI then reports *YouTube is asking to confirm this is not a bot*. Options, from simplest:
 
 1. **Change the exit IP**: try another VPN country/server (or no proxy) to confirm the IP is the cause.
-2. **Give yt-dlp YouTube cookies** (the fix recommended by yt-dlp):
+2. **Each user uploads their own cookies** in the UI (*YouTube cookies* section, opened automatically after a bot-check failure). They live in the user's session, in memory only, see [security.md](security.md#user-cookies). The UI explains the risks and how to export them; the steps are the same as below.
+3. **Or set server-wide fallback cookies** (used when a user has none):
    1. Use a **secondary Google account**: automated use can get an account flagged.
    2. In a **private browsing window**, log in to YouTube, then open `https://www.youtube.com/robots.txt` in the same tab.
    3. Export the cookies of `youtube.com` in Netscape format with an extension such as *Get cookies.txt LOCALLY*, then **close the private window** without logging out. YouTube rotates cookies of open sessions, which would invalidate the export.
@@ -41,7 +47,7 @@ YouTube shows this check to IPs it distrusts: VPN exits (Gluetun/NordVPN…), da
         - /path/on/host/cookies.txt:/config/cookies.txt:ro
       ```
 
-   On start, the logs show `Using cookies file /config/cookies.txt`, or an error if the file cannot be read. Cookies expire after a while: if the error comes back with *They may have expired*, export them again.
+   On start, the logs show `Using server cookies file /config/cookies.txt as fallback`, or an error if the file cannot be read. Cookies expire after a while: if the error comes back with *They may have expired*, export them again.
 
 Cookies and a proxy can be combined. Keeping the same exit country as the account's usual one helps.
 

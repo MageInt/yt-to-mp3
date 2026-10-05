@@ -2,6 +2,40 @@
 
 All endpoints are under `/api`. Responses are JSON unless noted. Unknown `/api/*` routes return `404 {"error":"Not found"}`.
 
+## Sessions
+
+Each browser gets an anonymous session, kept **in memory only**, identified by the `yt2mp3_sid` cookie (`HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS). It holds the user's YouTube cookies, if they uploaded some, and owns the user's jobs. A job is only visible to the session that created it: any other caller gets `404`.
+
+State-changing requests (`POST`, `PUT`, `DELETE`) are refused with `403 {"error":"Cross-site request refused"}` when the browser marks them `Sec-Fetch-Site: cross-site` or when `Origin` does not match the host.
+
+### `GET /api/session`
+Starts a session if there is none (sets the cookie), then returns its state. Never returns cookie names or values. `Cache-Control: no-store`.
+
+```json
+{
+  "hasCookies": true,
+  "cookieCount": 12,
+  "cookiesUpdatedAt": 1791100000000,
+  "cookiesExpireAt": 1825000000000,
+  "expiresAt": 1791107200000,
+  "idleTimeoutMinutes": 120
+}
+```
+
+`cookiesExpireAt` is the earliest expiry among persistent cookies (ms), `expiresAt` when the session itself ends if idle.
+
+### `PUT /api/session/cookies`
+Body: `{"cookies": "<content of a Netscape cookies.txt>"}` (file up to 100 kB). Only `youtube.com` / `google.com` cookies are kept. Rate-limited like job creation.
+
+| Status | When |
+|--------|------|
+| 200 | Same body as `GET /api/session` |
+| 400 | Not a Netscape file, malformed line, no YouTube/Google cookie, too many cookies (max 300) |
+| 401 | No valid session (reload the page) |
+
+### `DELETE /api/session/cookies`
+Forgets the cookies. `200` with the session state, `401` without a session.
+
 ## `GET /api/health`
 `200 {"status":"ok"}`. Used by the Docker `HEALTHCHECK` and CI.
 
@@ -20,7 +54,7 @@ Settings the UI needs:
 Formats (ids): `mp3`, `m4a` (AAC), `opus`, `ogg` (Vorbis), `flac`, `wav`. Source of truth: `backend/src/services/audioFormats.ts`.
 
 ## `POST /api/jobs`
-Body: `{"url": "<YouTube URL>", "format": "<format id>"}` (max 10 kB). `format` is optional (default `mp3`).
+Starts a session if needed; the job belongs to it and uses its cookies (else `YTDLP_COOKIES_FILE`, if set). Body: `{"url": "<YouTube URL>", "format": "<format id>"}` (max 10 kB). `format` is optional (default `mp3`).
 
 | Status | Body | When |
 |--------|------|------|
@@ -45,9 +79,9 @@ Server-Sent Events stream (`text/event-stream`). Each event is `data: <json>`:
 
 - `{"type":"progress","progress":42.1}`
 - `{"type":"completed","progress":100,"filename":"x.mp3","files":[{"filename":"x.mp3"}],"isPlaylist":false,"format":"mp3"}`
-- `{"type":"failed","error":"..."}`
+- `{"type":"failed","error":"...","code":"bot_check"}`: `code` is present only for known causes. `bot_check` = YouTube asked to "confirm you're not a bot"; the UI then opens the cookies section.
 
-On subscription, the current state is replayed (completed / failed / current progress). `404` if the job is unknown.
+On subscription, the current state is replayed (completed / failed / current progress). `404` if the job is unknown or belongs to another session.
 
 ## `GET /api/jobs/:id/file`
 Downloads the first (or only) audio file. `404` unknown job, `400 {"error":"File not ready","status":...}` if not completed.

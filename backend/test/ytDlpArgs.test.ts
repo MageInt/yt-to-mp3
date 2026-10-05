@@ -1,7 +1,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from '../src/config.js';
-import { buildYtDlpArgs, summarizeError } from '../src/services/downloadManager.js';
+import { buildYtDlpArgs, summarizeError, BOT_CHECK_ERRORS } from '../src/services/downloadManager.js';
 import { getAudioFormat } from '../src/services/audioFormats.js';
 
 const mp3 = getAudioFormat('mp3')!;
@@ -41,20 +41,20 @@ test('audio format is passed to yt-dlp', () => {
   assert.equal(args[args.indexOf('--audio-format') + 1], 'vorbis');
 });
 
-test('cookies: yt-dlp gets the per-job copy, never the mounted file', () => {
+test('cookies: yt-dlp only gets the jar path it is given', () => {
   assert.ok(!buildYtDlpArgs(video).includes('--cookies'));
-  config.ytdlpCookiesFile = '/config/cookies.txt';
-  const args = buildYtDlpArgs(video);
-  assert.equal(args[args.indexOf('--cookies') + 1], '/tmp/x/cookies.txt');
+  const args = buildYtDlpArgs(video, '/dev/shm/yt2mp3-x/cookies.txt');
+  assert.equal(args[args.indexOf('--cookies') + 1], '/dev/shm/yt2mp3-x/cookies.txt');
   assert.ok(args.indexOf('--cookies') < args.indexOf('--'));
 });
 
 const BOT_OUTPUT = "ERROR: [youtube] THh5ykVxpSg: Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies";
 
 test('bot check error is translated into an actionable message', () => {
-  assert.match(summarizeError(BOT_OUTPUT), /YTDLP_COOKIES_FILE/);
-  config.ytdlpCookiesFile = '/config/cookies.txt';
-  assert.match(summarizeError(BOT_OUTPUT), /may have expired/);
+  assert.equal(summarizeError(BOT_OUTPUT), BOT_CHECK_ERRORS.none);
+  assert.equal(summarizeError(BOT_OUTPUT, 'session'), BOT_CHECK_ERRORS.session);
+  assert.equal(summarizeError(BOT_OUTPUT, 'server'), BOT_CHECK_ERRORS.server);
+  assert.match(BOT_CHECK_ERRORS.session, /expired/);
 });
 
 test('other errors keep the ERROR: lines only', () => {

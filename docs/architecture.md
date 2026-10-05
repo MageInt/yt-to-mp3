@@ -20,13 +20,17 @@ Browser ──HTTP──▶ Express (backend/src/app.ts)
 | `backend/src/config.ts` | Reads all environment variables (see [configuration.md](configuration.md)). |
 | `backend/src/routes/jobs.ts` | HTTP endpoints for jobs (see [api.md](api.md)). |
 | `backend/src/services/urlValidator.ts` | YouTube host allowlist (SSRF protection), video / playlist detection. |
+| `backend/src/middleware/session.ts` | Session cookie handling (`yt2mp3_sid`), `requireSession`, same-origin check for state-changing requests (CSRF). |
+| `backend/src/routes/session.ts` | `/api/session` and `/api/session/cookies`. |
+| `backend/src/services/sessionStore.ts` | In-memory sessions (idle / max lifetime, eviction) holding uploaded cookies. |
+| `backend/src/services/cookieJar.ts` | Netscape cookies.txt parser: validation, YouTube/Google filter, rebuild. |
 | `backend/src/services/audioFormats.ts` | Output formats offered to users (id → yt-dlp `--audio-format`, file extension). |
 | `backend/src/services/downloadManager.ts` | In-memory job store, yt-dlp process management, SSE fan-out, cleanup. |
 
 ## Job lifecycle
 
-1. `POST /api/jobs` validates the URL and the format, checks the concurrency limit, creates a temp dir (`$TMPDIR/yt-dlp-*`) and spawns `yt-dlp`.
-2. `buildYtDlpArgs` builds the command line (adds `--proxy` when `YTDLP_PROXY` is set, `--cookies <tmpDir>/cookies.txt` when `YTDLP_COOKIES_FILE` is set; the file is copied there first). Playlist mode only when `ENABLE_PLAYLISTS=true` and the URL has `list=` (`--playlist-end MAX_PLAYLIST_ITEMS`); otherwise `--no-playlist`, so only the video in the URL is fetched.
+1. `POST /api/jobs` attaches the caller's session (created if needed), validates the URL and the format, checks the concurrency limit, creates a temp dir (`$TMPDIR/yt-dlp-*`) and spawns `yt-dlp`.
+2. `buildYtDlpArgs` builds the command line (adds `--proxy` when `YTDLP_PROXY` is set, `--cookies <jar>` when the session has cookies, else when `YTDLP_COOKIES_FILE` is set). The jar is written to a fresh `0700` directory under `SECRETS_TMP_DIR` (`/dev/shm`, RAM) right before spawning yt-dlp and deleted as soon as it exits (or on error/timeout/cleanup). Cookies YouTube rotated during the run are read back into the session first. Playlist mode only when `ENABLE_PLAYLISTS=true` and the URL has `list=` (`--playlist-end MAX_PLAYLIST_ITEMS`); otherwise `--no-playlist`, so only the video in the URL is fetched.
 3. `yt-dlp` stdout is parsed for `[download] NN%` lines. Values are queued and emitted every 250 ms over SSE so the progress bar moves smoothly instead of jumping 0→100.
 4. On process exit, files with the format's extension in the temp dir become `job.files`. The job is `completed` (or `failed` with a short error summary).
 5. The client downloads via `/api/jobs/:id/file` (single) or `/api/jobs/:id/files/:index` (playlist).
@@ -41,6 +45,7 @@ React 19 + Vite, styled with the Dorian UI charter (`frontend/src/styles/theme.c
 - `App.tsx`: loads `/api/config`, drives the flow (POST job → `EventSource` on `/progress` → auto-download, or `TrackList` for playlists), states idle / pending / downloading / converting / completed / failed.
 - `components/DownloadForm.tsx`: URL field (+ Paste button when the Clipboard API is available), format picker (radio group), contextual hints for playlist links.
 - `components/ProgressBar.tsx`: percentage while downloading, indeterminate bar while ffmpeg converts.
+- `components/CookiesPanel.tsx`: "YouTube cookies" disclosure: risk disclaimer, what the server does with them, how to export them, upload (file or paste), status and *Forget*. Warns when the page is served over plain HTTP.
 - `components/TrackList.tsx`: per-track and "download all" for playlist jobs (only reachable with `ENABLE_PLAYLISTS=true`).
 - `api.ts`: types and fetch helpers.
 

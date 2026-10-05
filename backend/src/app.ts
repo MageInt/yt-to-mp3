@@ -3,7 +3,9 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
+import { sameOriginOnly } from './middleware/session.js';
 import { jobsRouter } from './routes/jobs.js';
+import { sessionRouter } from './routes/session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '../public');
@@ -26,12 +28,16 @@ export function createApp() {
       strictTransportSecurity: false,
     }),
   );
-  app.use(express.json({ limit: '10kb' }));
+  const smallJson = express.json({ limit: '10kb' });
+  // The cookies upload route has its own, larger parser.
+  app.use((req, res, next) => (req.path === '/api/session/cookies' ? next() : smallJson(req, res, next)));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
 
+  app.use('/api', sameOriginOnly);
+  app.use('/api', sessionRouter);
   app.use('/api', jobsRouter);
 
   app.use('/api', (_req, res) => {

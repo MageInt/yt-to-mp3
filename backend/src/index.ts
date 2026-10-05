@@ -1,8 +1,8 @@
 import { config } from './config.js';
 import { createApp } from './app.js';
-import { checkCookiesFile } from './services/downloadManager.js';
+import { checkCookiesSetup } from './services/downloadManager.js';
 
-checkCookiesFile();
+checkCookiesSetup();
 
 const app = createApp();
 

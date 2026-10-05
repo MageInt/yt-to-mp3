@@ -1,7 +1,8 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { config } from '../config.js';
-import { createJob, getJob, subscribe, TooManyJobsError } from '../services/downloadManager.js';
+import { currentSession, session } from '../middleware/session.js';
+import { createJob, getJob, subscribe, TooManyJobsError, type Job } from '../services/downloadManager.js';
 import { AUDIO_FORMATS, DEFAULT_FORMAT, getAudioFormat } from '../services/audioFormats.js';
 import { validateYoutubeUrl } from '../services/urlValidator.js';
 
@@ -24,7 +25,18 @@ jobsRouter.get('/config', (_req, res) => {
   });
 });
 
-jobsRouter.post('/jobs', createJobLimiter, (req, res) => {
+// Jobs are only visible to the session that created them; anything else is a plain 404.
+function ownedJob(id: string, res: Response): Job | undefined {
+  const job = getJob(id);
+  const owner = currentSession(res);
+  if (!job || !owner || job.sessionId !== owner.id) {
+    res.status(404).json({ error: 'Job not found' });
+    return undefined;
+  }
+  return job;
+}
+
+jobsRouter.post('/jobs', createJobLimiter, session({ create: true }), (req, res) => {
   const result = validateYoutubeUrl(req.body?.url, { allowPlaylists: config.enablePlaylists });
   if (!result.ok) {
     res.status(400).json({ error: result.error });
@@ -38,7 +50,14 @@ jobsRouter.post('/jobs', createJobLimiter, (req, res) => {
   }
 
   try {
-    const job = createJob(result.url, format, result.isPlaylist);
+    const owner = currentSession(res)!;
+    const job = createJob({
+      url: result.url,
+      format,
+      isPlaylist: result.isPlaylist,
+      sessionId: owner.id,
+      sessionCookies: owner.cookies,
+    });
     res.status(201).json({ id: job.id, status: job.status });
   } catch (err) {
     if (err instanceof TooManyJobsError) {
@@ -49,14 +68,11 @@ jobsRouter.post('/jobs', createJobLimiter, (req, res) => {
   }
 });
 
-jobsRouter.get('/jobs/:id/progress', (req, res) => {
-  const { id } = req.params;
+jobsRouter.get('/jobs/:id/progress', session({ create: false }), (req, res) => {
+  const { id } = req.params as { id: string };
 
-  const job = getJob(id);
-  if (!job) {
-    res.status(404).json({ error: 'Job not found' });
-    return;
-  }
+  const job = ownedJob(id, res);
+  if (!job) return;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -73,14 +89,11 @@ jobsRouter.get('/jobs/:id/progress', (req, res) => {
   });
 });
 
-jobsRouter.get('/jobs/:id/file', (req, res) => {
-  const { id } = req.params;
+jobsRouter.get('/jobs/:id/file', session({ create: false }), (req, res) => {
+  const { id } = req.params as { id: string };
 
-  const job = getJob(id);
-  if (!job) {
-    res.status(404).json({ error: 'Job not found' });
-    return;
-  }
+  const job = ownedJob(id, res);
+  if (!job) return;
 
   if (job.status !== 'completed' || !job.filePath) {
     res.status(400).json({ error: 'File not ready', status: job.status });
@@ -95,14 +108,11 @@ jobsRouter.get('/jobs/:id/file', (req, res) => {
   });
 });
 
-jobsRouter.get('/jobs/:id/files/:fileIndex', (req, res) => {
-  const { id, fileIndex } = req.params;
+jobsRouter.get('/jobs/:id/files/:fileIndex', session({ create: false }), (req, res) => {
+  const { id, fileIndex } = req.params as { id: string; fileIndex: string };
 
-  const job = getJob(id);
-  if (!job) {
-    res.status(404).json({ error: 'Job not found' });
-    return;
-  }
+  const job = ownedJob(id, res);
+  if (!job) return;
 
   if (job.status !== 'completed') {
     res.status(400).json({ error: 'File not ready', status: job.status });

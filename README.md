@@ -53,7 +53,7 @@ docker compose up
 
 Open [http://localhost:8080](http://localhost:8080), paste a YouTube URL, pick a format, click Download.
 
-If downloads fail with *Sign in to confirm you're not a bot*, YouTube distrusts the server's IP: see [cookies setup](docs/configuration.md#sign-in-to-confirm-youre-not-a-bot).
+If downloads fail with *Sign in to confirm you're not a bot*, YouTube distrusts the server's IP: each user can upload their YouTube cookies in the *YouTube cookies* section (kept in memory only, per browser). See [cookies setup](docs/configuration.md#sign-in-to-confirm-youre-not-a-bot) and [security notes](docs/security.md#user-cookies).
 
 Limits (concurrent jobs, playlist size, rate limit…) are configurable through environment variables: see [docs/configuration.md](docs/configuration.md).
 
@@ -67,6 +67,7 @@ Limits (concurrent jobs, playlist size, rate limit…) are configurable through 
 - yt-dlp + ffmpeg under the hood, best available audio quality
 - Real-time download progress bar
 - Clean dark UI, keyboard friendly (`/` to focus the link field), mobile ready
+- Per-browser YouTube cookies (optional, memory only) to get past YouTube's bot check, with an in-app risk disclaimer and export guide
 - Hardened: YouTube-only URL allowlist, rate limiting, concurrency limits, security headers, non-root container
 
 ## Architecture
@@ -101,10 +102,13 @@ A single container runs both the React frontend (served as static files) and the
 │   │   ├── index.ts           Server entry
 │   │   ├── app.ts             Express app factory
 │   │   ├── config.ts          Environment variables
-│   │   ├── routes/jobs.ts     API endpoints
+│   │   ├── routes/            jobs.ts, session.ts (API endpoints)
+│   │   ├── middleware/        session cookie + CSRF check
 │   │   └── services/
 │   │       ├── downloadManager.ts  yt-dlp process management
 │   │       ├── audioFormats.ts     Output formats (MP3, M4A, Opus…)
+│   │       ├── sessionStore.ts     In-memory sessions (user cookies)
+│   │       ├── cookieJar.ts        cookies.txt parser / filter
 │   │       └── urlValidator.ts     YouTube URL allowlist
 │   └── test/                  Unit + HTTP tests (node:test)
 ├── frontend/            React + Vite app
@@ -116,6 +120,7 @@ A single container runs both the React frontend (served as static files) and the
 │       ├── components/
 │       │   ├── DownloadForm.tsx  URL field + format picker
 │       │   ├── ProgressBar.tsx   SSE progress / conversion
+│       │   ├── CookiesPanel.tsx  YouTube cookies upload + disclaimer
 │       │   └── TrackList.tsx     Multi-track playlist UI (ENABLE_PLAYLISTS)
 │       ├── styles/theme.css   Design tokens + fonts
 │       └── index.css          App styles

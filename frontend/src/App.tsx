@@ -2,7 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import DownloadForm from './components/DownloadForm';
 import ProgressBar from './components/ProgressBar';
 import TrackList from './components/TrackList';
-import { API_BASE, FALLBACK_CONFIG, fetchConfig, triggerDownload, type AppConfig, type JobEvent, type TrackFile } from './api';
+import CookiesPanel from './components/CookiesPanel';
+import {
+  API_BASE,
+  FALLBACK_CONFIG,
+  fetchConfig,
+  fetchSession,
+  triggerDownload,
+  type AppConfig,
+  type JobEvent,
+  type SessionInfo,
+  type TrackFile,
+} from './api';
 
 type Status = 'idle' | 'pending' | 'downloading' | 'completed' | 'failed';
 
@@ -20,7 +31,12 @@ function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [files, setFiles] = useState<TrackFile[]>([]);
   const [filename, setFilename] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [sessionError, setSessionError] = useState(false);
+  const [cookiesOpen, setCookiesOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const cookiesRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
     fetchConfig()
@@ -33,8 +49,16 @@ function App() {
         setConfigError(true);
         setFormat(FALLBACK_CONFIG.defaultFormat);
       });
+    fetchSession()
+      .then(setSession)
+      .catch(() => setSessionError(true));
     return () => eventSourceRef.current?.close();
   }, []);
+
+  const showCookies = () => {
+    setCookiesOpen(true);
+    requestAnimationFrame(() => cookiesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   // The chosen format lives in the URL so reloads and shared links keep it.
   const changeFormat = (id: string) => {
@@ -53,6 +77,7 @@ function App() {
     setJobId(null);
     setFiles([]);
     setFilename(null);
+    setErrorCode(null);
   }, []);
 
   // Escape clears a finished or failed job.
@@ -64,9 +89,10 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [status, reset]);
 
-  const fail = (message: string) => {
+  const fail = (message: string, code?: string) => {
     setStatus('failed');
     setError(message);
+    setErrorCode(code ?? null);
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
   };
@@ -118,7 +144,12 @@ function App() {
           triggerDownload(`${API_BASE}/jobs/${id}/file`, data.filename);
         }
       } else if (data.type === 'failed') {
-        fail(data.error || 'Download failed');
+        fail(data.error || 'Download failed', data.code);
+        if (data.code === 'bot_check') {
+          // The session may have been refreshed or expired meanwhile.
+          fetchSession().then(setSession).catch(() => {});
+          showCookies();
+        }
       }
     };
 
@@ -193,10 +224,24 @@ function App() {
               <span className="error-text">{error}</span>
             </div>
             <div className="result-actions">
-              <button className="btn btn-sm" onClick={reset}>Try again</button>
+              {errorCode === 'bot_check' && (
+                <button className="btn btn-sm" onClick={showCookies}>Add YouTube cookies</button>
+              )}
+              <button className={errorCode === 'bot_check' ? 'btn btn-ghost btn-sm' : 'btn btn-sm'} onClick={reset}>
+                Try again
+              </button>
             </div>
           </div>
         )}
+
+        <CookiesPanel
+          ref={cookiesRef}
+          session={session}
+          sessionError={sessionError}
+          open={cookiesOpen}
+          onToggle={setCookiesOpen}
+          onSessionChange={setSession}
+        />
       </main>
 
       <footer className="footer muted">

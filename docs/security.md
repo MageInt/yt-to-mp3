@@ -17,20 +17,36 @@ Public-facing web app with no authentication that runs an external downloader on
 | Request flooding | `express-rate-limit` on `POST /api/jobs`, 10 kB JSON body | `routes/jobs.ts`, `app.ts` |
 | Memory growth | yt-dlp output buffer capped at 64 kB, error messages capped at 500 chars | `downloadManager.ts` |
 | IP exposure to YouTube | Optional `YTDLP_PROXY` (e.g. Gluetun VPN); fails closed if the proxy is down | `config.ts`, `downloadManager.ts` |
-| Leaking YouTube session cookies | `YTDLP_COOKIES_FILE` mounted read-only, copied per job with mode `0600` into the job's temp dir (deleted with the job), never exposed over HTTP; use a secondary account | `downloadManager.ts`, `docs/configuration.md` |
+| Leaking YouTube session cookies | See [User cookies](#user-cookies) | `sessionStore.ts`, `cookieJar.ts`, `downloadManager.ts` |
+| Accessing someone else's files | Jobs bound to the creating session; other callers get `404` | `routes/jobs.ts` |
+| CSRF on state-changing routes | `SameSite=Strict` session cookie, JSON-only bodies, `Sec-Fetch-Site` / `Origin` check | `middleware/session.ts` |
 | Cross-origin abuse | No CORS headers (same-origin only) | `app.ts` |
 | XSS / clickjacking / sniffing | `helmet` (CSP `default-src 'self'`, `frame-ancestors 'self'`, `nosniff`…), `x-powered-by` off | `app.ts` |
 | Path traversal on download | Files served only from the job's `files` list, by index | `routes/jobs.ts` |
 | Container breakout impact | Non-root `node` user, `no-new-privileges` in compose, minimal Alpine image | `Dockerfile`, `docker-compose.yml` |
 | Supply chain | `npm ci` from lockfiles, `npm audit --audit-level=high` in CI, provenance + SBOM on the image | `.github/workflows/release.yml` |
 
+## User cookies
+
+Users can upload a YouTube `cookies.txt` to get past the "not a bot" check. These cookies are a **full Google session** (YouTube, Gmail, Drive…), so they are handled as secrets:
+
+- **Memory only.** Stored in the process heap, in the user's session (`sessionStore.ts`). No database, no disk, no logs. A restart wipes everything.
+- **Bound to one browser.** Session id: 256-bit random, in an `HttpOnly`, `SameSite=Strict` cookie (`Secure` over HTTPS). Never readable by page scripts, never shared between visitors.
+- **Minimized.** The upload is parsed strictly (Netscape format, RFC 6265 name/value charset, 300 cookies and 100 kB max). Only `youtube.com` / `google.com` cookies are kept, and the jar is rebuilt from the parsed fields, so nothing else from the file reaches yt-dlp.
+- **Never echoed.** The API only returns counts and dates, never names or values. The page clears the textarea after upload.
+- **RAM-only while in use.** yt-dlp needs a file: the jar is written to `SECRETS_TMP_DIR` (`/dev/shm`, tmpfs) in a `0700` directory with a `0600` file, for the duration of the process only, then deleted. If that directory is not writable, the download fails rather than falling back to disk.
+- **Limited lifetime.** Wiped on *Forget*, after `SESSION_IDLE_MINUTES` of inactivity, after `SESSION_MAX_HOURS`, when evicted (`MAX_SESSIONS`), or on restart.
+- **Transport.** Over plain HTTP, cookies travel in clear text: the UI warns about it outside `localhost`. Put the app behind an HTTPS reverse proxy (`TRUST_PROXY=true`) if it is reachable beyond a trusted LAN.
+
+Residual risks, shown to users in the UI disclaimer: whoever controls the server (or its memory) can use the account; heavy automated use can get the account flagged. Recommend a secondary Google account.
+
 HSTS and `upgrade-insecure-requests` are deliberately disabled: the app is often reached over plain HTTP on a LAN. Terminate TLS on a reverse proxy and set `TRUST_PROXY=true`.
 
 ## Known limitations
 
 - No authentication: anyone who can reach the port can download. Put it behind a VPN or an authenticating proxy if exposed to the Internet.
-- Job IDs (random UUIDv4) act as bearer tokens for the files.
-- In-memory state: the concurrency limit is per process.
+- Anonymous sessions: anyone can use the app and start a session (no accounts).
+- In-memory state: the concurrency limit and sessions are per process (single instance only).
 
 ## Audit — 2026-10-03
 

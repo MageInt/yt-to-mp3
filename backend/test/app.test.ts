@@ -20,7 +20,7 @@ after(() => {
 function postJob(body: string) {
   return fetch(`${baseUrl}/api/jobs`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+    headers: { 'Content-Type': 'application/json' },
     body,
   });
 }
@@ -89,6 +89,22 @@ test('POST /api/jobs rejects playlist-only URL by default', async () => {
   const res = await postJob(JSON.stringify({ url: 'https://www.youtube.com/playlist?list=PL123' }));
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /Playlist downloads are disabled/);
+});
+
+test('cross-site POST is refused (CSRF)', async () => {
+  const body = JSON.stringify({ url: 'https://youtu.be/abc' });
+  const evilOrigin = await fetch(`${baseUrl}/api/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+    body,
+  });
+  assert.equal(evilOrigin.status, 403);
+  const crossSite = await fetch(`${baseUrl}/api/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'cross-site' },
+    body,
+  });
+  assert.equal(crossSite.status, 403);
 });
 
 test('unknown job returns 404', async () => {
