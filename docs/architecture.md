@@ -30,12 +30,15 @@ Browser ──HTTP──▶ Express (backend/src/app.ts)
 
 ## Job lifecycle
 
-1. `POST /api/jobs` attaches the caller's session (created if needed), validates the URL and the format, checks the concurrency limit, creates a temp dir (`$TMPDIR/yt-dlp-*`) and spawns `yt-dlp`.
+1. `POST /api/jobs` attaches the caller's session (created if needed), validates the URL and the format, checks `MAX_JOBS_PER_SESSION` and `MAX_QUEUE_SIZE`, creates a temp dir (`$TMPDIR/yt-dlp-*`) and puts the job in the **queue** (status `queued`).
+   - `pump()` starts queued jobs in FIFO order while fewer than `MAX_CONCURRENT_JOBS` run, skipping (without reordering) jobs whose session already runs `MAX_PARALLEL_PER_SESSION` downloads. It runs on every new job and whenever a job finishes, fails or is cancelled.
+   - Queued jobs get their position over SSE (`queued` events). `DELETE /api/jobs/:id` cancels a queued or running job.
+   - Cookies and User-Agent are resolved when the job **starts**, from the session's current state.
 2. `buildYtDlpArgs` builds the command line (adds `--proxy` when `YTDLP_PROXY` is set, `--cookies <jar>` when the session has cookies, else when `YTDLP_COOKIES_FILE` is set; `--user-agent` with the UA saved at cookie upload, else the requester's browser UA). The jar is written to a fresh `0700` directory under `SECRETS_TMP_DIR` (`/dev/shm`, RAM) right before spawning yt-dlp and deleted as soon as it exits (or on error/timeout/cleanup). Cookies YouTube rotated during the run are read back into the session first. Playlist mode only when `ENABLE_PLAYLISTS=true` and the URL has `list=` (`--playlist-end MAX_PLAYLIST_ITEMS`); otherwise `--no-playlist`, so only the video in the URL is fetched.
 3. `yt-dlp` stdout is parsed for `[download] NN%` lines. Values are queued and emitted every 250 ms over SSE so the progress bar moves smoothly instead of jumping 0→100.
 4. On process exit, files with the format's extension in the temp dir become `job.files`. The job is `completed` (or `failed` with a short error summary).
 5. The client downloads via `/api/jobs/:id/file` (single) or `/api/jobs/:id/files/:index` (playlist).
-6. A sweep every 5 minutes deletes jobs older than `JOB_TTL_MINUTES` (kills the process, removes the temp dir). A download is killed after `DOWNLOAD_TIMEOUT_MINUTES`.
+6. A sweep every 5 minutes fails jobs queued longer than `MAX_QUEUE_WAIT_MINUTES` and deletes finished jobs `JOB_TTL_MINUTES` after they finished (removes the temp dir). A running download is killed after `DOWNLOAD_TIMEOUT_MINUTES`.
 
 State is **in memory only**: restarting the container drops all jobs. The app is designed for a single instance.
 

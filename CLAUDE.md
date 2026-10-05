@@ -17,11 +17,11 @@ yt-to-mp3: paste a YouTube link, get an MP3. One container: Express 5 backend (A
 backend/src/{index,app,config}.ts   entry, Express app factory, env config
 backend/src/routes/                 jobs.ts (/api/jobs, /api/config), session.ts (/api/session, cookies upload)
 backend/src/middleware/session.ts   session cookie, requireSession, same-origin (CSRF) check
-backend/src/services/               downloadManager (yt-dlp, SSE, cleanup), urlValidator (YouTube allowlist,
+backend/src/services/               downloadManager (queue, yt-dlp, SSE, cleanup), urlValidator (YouTube allowlist,
                                     video/playlist detection), audioFormats (output formats),
                                     sessionStore (in-memory sessions), cookieJar (cookies.txt parser),
                                     userAgent (UA paired with cookies at upload, forwarded to yt-dlp)
-backend/test/                       node:test unit + HTTP tests + yt-dlp args
+backend/test/                       node:test unit + HTTP tests + yt-dlp args + queue (fixtures/fake-yt-dlp.mjs)
 frontend/src/                       App.tsx + components (DownloadForm, ProgressBar, TrackList, CookiesPanel), api.ts
 frontend/src/styles/theme.css       Dorian UI tokens (dark only) + fonts/; app styles in src/index.css
 e2e/tests/                          Playwright (tag @network = real YouTube download)
@@ -46,6 +46,7 @@ and `podman build --format docker` (otherwise the HEALTHCHECK is dropped).
 
 - UI follows the Dorian UI charter (load the `dorian-ui` skill before UI work): tokens only, no hardcoded colors.
 - Playlists are disabled by default (`ENABLE_PLAYLISTS`); keep the playlist code paths working.
+- Downloads go through the queue in `downloadManager.ts` (`pump()`); never spawn yt-dlp outside it. Keep `MAX_PARALLEL_PER_SESSION` semantics: one account's cookies are not used in parallel.
 - User cookies are secrets: memory only, never logged, never returned by the API, written only to `SECRETS_TMP_DIR` while yt-dlp runs. Jobs must stay bound to their session. Read `docs/security.md#user-cookies` before touching sessions or cookies.
 - TypeScript strict, ESM (`.js` suffix in backend relative imports), 2-space indent, single quotes.
 - Every new env variable goes through `backend/src/config.ts`.

@@ -18,6 +18,7 @@ cd frontend && npm ci && npm run dev
 cd backend
 npm run typecheck   # tsc on src + test (tsconfig.test.json)
 npm test            # node:test via tsx, files in backend/test/*.test.ts
+                    # queue tests run a fake yt-dlp (test/fixtures/fake-yt-dlp.mjs) via config.ytdlpPath
 npm run build       # emits dist/
 ```
 
@@ -66,3 +67,14 @@ npm audit
 ```
 
 yt-dlp is not pinned: every image build installs the latest release (YouTube changes often).
+
+## Trying the queue by hand
+
+Run the image with a slow fake yt-dlp and a single slot, then start downloads from several browsers (or private windows):
+
+```bash
+docker run --rm -p 8080:8080 -e MAX_CONCURRENT_JOBS=1 -e YTDLP_PATH=/fake/yt-dlp.mjs -e FAKE_YTDLP_DELAY_MS=6000 \
+  -v "$PWD/backend/test/fixtures/fake-yt-dlp.mjs":/fake/yt-dlp.mjs:ro yt-to-mp3:local
+```
+
+With Podman on SELinux, use `:z` (shared label), not `:Z`, when another container mounts the repo at the same time.

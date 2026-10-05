@@ -59,7 +59,8 @@ Starts a session if needed; the job belongs to it and uses its cookies (else `YT
 
 | Status | Body | When |
 |--------|------|------|
-| 201 | `{"id": "<uuid>", "status": "downloading"}` | Job started |
+| 201 | `{"id": "<uuid>", "status": "downloading"}` | Job started right away |
+| 201 | `{"id": "<uuid>", "status": "queued"}` | Job waiting in the download queue (see below) |
 | 400 | `{"error": "URL is required"}` | Missing / non-string `url` |
 | 400 | `{"error": "Invalid URL"}` | Not parseable, not http(s), credentials or custom port |
 | 400 | `{"error": "Only YouTube URLs are supported"}` | Host not in allowlist |
@@ -69,7 +70,10 @@ Starts a session if needed; the job belongs to it and uses its cookies (else `YT
 | 400 | `{"error": "Bad request"}` | Malformed JSON |
 | 413 | `{"error": "Bad request"}` | Body too large |
 | 429 | `{"error": "Too many requests. ..."}` | Rate limit (`RATE_LIMIT_*`) |
-| 429 | `{"error": "Server is busy. ..."}` | `MAX_CONCURRENT_JOBS` reached |
+| 429 | `{"error": "You already have N downloads waiting or in progress. ..."}` | `MAX_JOBS_PER_SESSION` reached |
+| 429 | `{"error": "The download queue is full. ..."}` | `MAX_QUEUE_SIZE` reached |
+
+**Queue.** At most `MAX_CONCURRENT_JOBS` downloads run at once, and at most `MAX_PARALLEL_PER_SESSION` per session (so one user's cookies are never used in parallel). Other jobs wait in a FIFO queue; a job whose session is already at its limit is skipped without losing its place. A job queued longer than `MAX_QUEUE_WAIT_MINUTES` fails with code `queue_timeout`.
 
 Allowed hosts: `youtube.com`, `www.youtube.com`, `m.youtube.com`, `music.youtube.com`, `youtu.be`, `www.youtu.be`.
 
@@ -78,9 +82,10 @@ URL must identify a video (`?v=`, `youtu.be/<id>`, `/shorts/`, `/live/`, `/embed
 ## `GET /api/jobs/:id/progress`
 Server-Sent Events stream (`text/event-stream`). Each event is `data: <json>`:
 
+- `{"type":"queued","position":2}`: sent on subscription and whenever the position changes
 - `{"type":"progress","progress":42.1}`
 - `{"type":"completed","progress":100,"filename":"x.mp3","files":[{"filename":"x.mp3"}],"isPlaylist":false,"format":"mp3"}`
-- `{"type":"failed","error":"...","code":"bot_check"}`: `code` is present only for known causes. `bot_check` = YouTube asked to "confirm you're not a bot"; the UI then opens the cookies section.
+- `{"type":"failed","error":"...","code":"bot_check"}`: `code` is present only for known causes: `bot_check` (YouTube asked to "confirm you're not a bot"; the UI then opens the cookies section), `cancelled`, `queue_timeout`.
 
 On subscription, the current state is replayed (completed / failed / current progress). `404` if the job is unknown or belongs to another session.
 
@@ -89,3 +94,12 @@ Downloads the first (or only) audio file. `404` unknown job, `400 {"error":"File
 
 ## `GET /api/jobs/:id/files/:index`
 Downloads track `index` (0-based) of a playlist job. `404` if job or index is unknown, `400` if not completed.
+
+## `DELETE /api/jobs/:id`
+Cancels a queued or running job (kills yt-dlp, frees its slot). Subscribers receive `{"type":"failed","code":"cancelled"}`.
+
+| Status | When |
+|--------|------|
+| 200 | `{"id": "...", "status": "failed"}` |
+| 404 | Unknown job or another session's job |
+| 409 | Job already completed or failed |

@@ -12,7 +12,8 @@ Public-facing web app with no authentication that runs an external downloader on
 | Mass downloads (channels, playlists) | URL must identify a video; playlists off by default (`ENABLE_PLAYLISTS`) | `services/urlValidator.ts` |
 | Arbitrary yt-dlp options via format | `format` checked against a fixed allowlist | `services/audioFormats.ts` |
 | yt-dlp option injection | `spawn` without a shell + `--` before the URL | `services/downloadManager.ts` |
-| Process / CPU exhaustion | `MAX_CONCURRENT_JOBS`, `DOWNLOAD_TIMEOUT_MINUTES` | `downloadManager.ts`, `config.ts` |
+| Process / CPU exhaustion | Bounded queue: `MAX_CONCURRENT_JOBS`, `MAX_PARALLEL_PER_SESSION`, `MAX_JOBS_PER_SESSION`, `MAX_QUEUE_SIZE`, `MAX_QUEUE_WAIT_MINUTES`, `DOWNLOAD_TIMEOUT_MINUTES` | `downloadManager.ts`, `config.ts` |
+| One account used in parallel (flagging risk) | `MAX_PARALLEL_PER_SESSION=1`: a session's cookies are only used by one yt-dlp process at a time | `downloadManager.ts` |
 | Disk exhaustion | `MAX_PLAYLIST_ITEMS`, TTL sweep every 5 min | `downloadManager.ts` |
 | Request flooding | `express-rate-limit` on `POST /api/jobs`, 10 kB JSON body | `routes/jobs.ts`, `app.ts` |
 | Memory growth | yt-dlp output buffer capped at 64 kB, error messages capped at 500 chars | `downloadManager.ts` |

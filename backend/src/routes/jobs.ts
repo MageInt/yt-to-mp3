@@ -2,10 +2,10 @@ import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { config } from '../config.js';
 import { currentSession, session } from '../middleware/session.js';
-import { createJob, getJob, subscribe, TooManyJobsError, type Job } from '../services/downloadManager.js';
+import { cancelJob, createJob, getJob, JobLimitError, subscribe, type Job } from '../services/downloadManager.js';
 import { AUDIO_FORMATS, DEFAULT_FORMAT, getAudioFormat } from '../services/audioFormats.js';
 import { validateYoutubeUrl } from '../services/urlValidator.js';
-import { chooseUserAgent } from '../services/userAgent.js';
+import { sanitizeUserAgent } from '../services/userAgent.js';
 
 export const jobsRouter = Router();
 
@@ -57,12 +57,11 @@ jobsRouter.post('/jobs', createJobLimiter, session({ create: true }), (req, res)
       format,
       isPlaylist: result.isPlaylist,
       sessionId: owner.id,
-      sessionCookies: owner.cookies,
-      userAgent: config.forwardUserAgent ? chooseUserAgent(owner, req.get('user-agent')) : null,
+      requestUserAgent: sanitizeUserAgent(req.get('user-agent')),
     });
     res.status(201).json({ id: job.id, status: job.status });
   } catch (err) {
-    if (err instanceof TooManyJobsError) {
+    if (err instanceof JobLimitError) {
       res.status(429).json({ error: err.message });
       return;
     }
@@ -133,4 +132,16 @@ jobsRouter.get('/jobs/:id/files/:fileIndex', session({ create: false }), (req, r
       console.error('Download error:', err);
     }
   });
+});
+
+jobsRouter.delete('/jobs/:id', session({ create: false }), (req, res) => {
+  const { id } = req.params as { id: string };
+  const job = ownedJob(id, res);
+  if (!job) return;
+
+  if (!cancelJob(id)) {
+    res.status(409).json({ error: 'Job already finished', status: job.status });
+    return;
+  }
+  res.json({ id, status: 'failed' });
 });

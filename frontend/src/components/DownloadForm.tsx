@@ -7,10 +7,11 @@ interface Props {
   onFormatChange: (id: string) => void;
   playlistsEnabled: boolean;
   busy: boolean;
+  busyLabel?: string;
   onSubmit: (url: string) => void;
 }
 
-function DownloadForm({ formats, format, onFormatChange, playlistsEnabled, busy, onSubmit }: Props) {
+function DownloadForm({ formats, format, onFormatChange, playlistsEnabled, busy, busyLabel = 'Starting…', onSubmit }: Props) {
   const [url, setUrl] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const canPaste = typeof navigator !== 'undefined' && !!navigator.clipboard?.readText;
@@ -109,7 +110,7 @@ function DownloadForm({ formats, format, onFormatChange, playlistsEnabled, busy,
       <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy || !url.trim()} aria-busy={busy}>
         {busy ? (
           <>
-            <span className="spinner" aria-hidden="true" /> Starting…
+            <span className="spinner" aria-hidden="true" /> {busyLabel}
           </>
         ) : (
           `Download ${selected?.label ?? ''}`.trim()

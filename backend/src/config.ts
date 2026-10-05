@@ -12,7 +12,14 @@ function boolFromEnv(name: string, fallback: boolean): boolean {
 
 export const config = {
   port: intFromEnv('PORT', 8080),
+  // Download queue: global parallelism, per-session parallelism (the same cookies/account never
+  // downloads twice at once), and bounds on how much can wait.
   maxConcurrentJobs: intFromEnv('MAX_CONCURRENT_JOBS', 3),
+  maxParallelPerSession: intFromEnv('MAX_PARALLEL_PER_SESSION', 1),
+  maxJobsPerSession: intFromEnv('MAX_JOBS_PER_SESSION', 5),
+  maxQueueSize: intFromEnv('MAX_QUEUE_SIZE', 50),
+  maxQueueWaitMs: intFromEnv('MAX_QUEUE_WAIT_MINUTES', 30) * 60 * 1000,
+  ytdlpPath: process.env.YTDLP_PATH?.trim() || 'yt-dlp',
   maxPlaylistItems: intFromEnv('MAX_PLAYLIST_ITEMS', 50),
   jobTtlMs: intFromEnv('JOB_TTL_MINUTES', 30) * 60 * 1000,
   downloadTimeoutMs: intFromEnv('DOWNLOAD_TIMEOUT_MINUTES', 10) * 60 * 1000,

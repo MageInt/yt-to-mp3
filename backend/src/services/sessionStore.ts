@@ -75,6 +75,13 @@ export function setSessionCookies(session: Session, cookies: Cookie[] | null, us
   session.cookiesUserAgent = cookies ? userAgent : null;
 }
 
+// Read access for background work (queued downloads): does not extend the session.
+export function peekSession(id: string): Session | undefined {
+  const session = sessions.get(id);
+  if (!session || isExpired(session, Date.now())) return undefined;
+  return session;
+}
+
 // Used after a download to store cookies rotated by YouTube. Does not extend the session.
 export function replaceSessionCookies(id: string, cookies: Cookie[]) {
   const session = sessions.get(id);

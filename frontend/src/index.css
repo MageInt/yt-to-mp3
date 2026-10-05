@@ -161,3 +161,14 @@ details.disclosure.nested > .body.hint-warning { color: var(--warning); }
 .success-text { color: var(--success); }
 /* theme.css makes .alert strong a block (title); keep inline emphasis inside lists. */
 .alert li strong { display: inline; }
+
+/* ---------- Queue ---------- */
+.queue-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--warning);
+}
+.progress.indeterminate.paused > span { background: var(--border-strong); }
+.status-card .queue-hint { margin: 0; font-size: var(--text-xs); }

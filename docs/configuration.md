@@ -5,11 +5,15 @@ All settings are environment variables read in `backend/src/config.ts`. Invalid 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | HTTP port. |
-| `MAX_CONCURRENT_JOBS` | `3` | Max yt-dlp processes running at once; extra requests get `429`. |
+| `MAX_CONCURRENT_JOBS` | `3` | Max downloads running at once on the server. Extra jobs wait in the queue. |
+| `MAX_PARALLEL_PER_SESSION` | `1` | Max downloads running at once for one user (session). Keeps one account's cookies from being used in parallel. |
+| `MAX_JOBS_PER_SESSION` | `5` | Max jobs a user can have queued + running; beyond, `429`. |
+| `MAX_QUEUE_SIZE` | `50` | Max jobs waiting in the queue (all users); beyond, `429`. |
+| `MAX_QUEUE_WAIT_MINUTES` | `30` | A job still queued after this is failed (`queue_timeout`). |
 | `ENABLE_PLAYLISTS` | `false` | `true` downloads the whole playlist when a URL has `list=`. `false`: only the video in the URL is downloaded, playlist-only URLs are refused. |
 | `FORWARD_USER_AGENT` | `true` | Pass a browser User-Agent to yt-dlp (`--user-agent`): the one captured when the user uploaded their cookies (so YouTube sees the browser they come from), else the UA of the download request. Only real browser UAs are forwarded (`Mozilla/5.0 (…`, printable ASCII, ≤ 512 chars); headless/bot/CLI UAs are ignored and yt-dlp's default is used. |
 | `MAX_PLAYLIST_ITEMS` | `50` | Max tracks downloaded from a playlist (`--playlist-end`). Only used when `ENABLE_PLAYLISTS=true`. |
-| `JOB_TTL_MINUTES` | `30` | Jobs and their files are deleted after this age (sweep every 5 min). |
+| `JOB_TTL_MINUTES` | `30` | A finished job and its files are deleted this long after it completed or failed (sweep every 5 min). |
 | `DOWNLOAD_TIMEOUT_MINUTES` | `10` | yt-dlp is killed after this duration. |
 | `RATE_LIMIT_WINDOW_MINUTES` | `15` | Rate-limit window for `POST /api/jobs`. |
 | `RATE_LIMIT_MAX` | `20` | Max job creations per IP per window. |
@@ -20,6 +24,7 @@ All settings are environment variables read in `backend/src/config.ts`. Invalid 
 | `SESSION_MAX_HOURS` | `24` | Hard limit on a session's lifetime, whatever the activity. |
 | `MAX_SESSIONS` | `1000` | Max sessions kept in memory; the oldest is dropped beyond. |
 | `COOKIE_SECURE` | `auto` | `Secure` flag on the session cookie. `auto`: when the request came over HTTPS (behind a TLS proxy this needs `TRUST_PROXY=true`). `true` / `false` force it. |
+| `YTDLP_PATH` | `yt-dlp` | yt-dlp executable. Only useful for tests (`backend/test/fixtures/fake-yt-dlp.mjs`). |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so the rate limit uses the real client IP (`X-Forwarded-For`). |
 
 Set in the image (no need to change): `NODE_ENV=production`, `TMPDIR=/app/tmp`.

@@ -67,6 +67,7 @@ Limits (concurrent jobs, playlist size, rate limit…) are configurable through 
 - yt-dlp + ffmpeg under the hood, best available audio quality
 - Real-time download progress bar
 - Clean dark UI, keyboard friendly (`/` to focus the link field), mobile ready
+- Download queue: limited parallel downloads (server-wide and per user), live queue position, cancel
 - Per-browser YouTube cookies (optional, memory only) to get past YouTube's bot check, with an in-app risk disclaimer and export guide
 - Hardened: YouTube-only URL allowlist, rate limiting, concurrency limits, security headers, non-root container
 

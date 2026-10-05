@@ -6,7 +6,8 @@ import crypto from 'crypto';
 import { config } from '../config.js';
 import type { AudioFormat } from './audioFormats.js';
 import { parseNetscapeCookies, serializeNetscapeCookies, type Cookie } from './cookieJar.js';
-import { replaceSessionCookies } from './sessionStore.js';
+import { peekSession, replaceSessionCookies } from './sessionStore.js';
+import { chooseUserAgent } from './userAgent.js';
 
 export interface JobFile {
   filename: string;
@@ -16,11 +17,11 @@ export interface JobFile {
 export interface Job {
   id: string;
   url: string;
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  status: 'queued' | 'downloading' | 'completed' | 'failed';
   progress: number;
   error?: string;
   // Machine-readable failure reason for the UI ('bot_check': YouTube wants a signed-in session).
-  errorCode?: 'bot_check';
+  errorCode?: 'bot_check' | 'cancelled' | 'queue_timeout';
   filePath?: string;
   filename?: string;
   files: JobFile[];
@@ -28,10 +29,14 @@ export interface Job {
   isPlaylist: boolean;
   tmpDir: string;
   createdAt: number;
+  // When the job completed or failed; the files are kept JOB_TTL_MINUTES after that.
+  finishedAt?: number;
   // Owner: only this session can read the job's progress and files.
   sessionId: string;
   cookieSource: CookieSource;
-  // Sanitized browser User-Agent of the requester, forwarded to yt-dlp (see userAgent.ts).
+  // Sanitized browser User-Agent of the requester (see userAgent.ts).
+  requestUserAgent: string | null;
+  // User-Agent actually sent to yt-dlp, chosen when the job starts.
   userAgent: string | null;
   // RAM-only directory holding the cookie jar while yt-dlp runs.
   secretsDir?: string;
@@ -44,12 +49,12 @@ export interface CreateJobParams {
   format: AudioFormat;
   isPlaylist: boolean;
   sessionId: string;
-  // Cookies uploaded by the user for this session, if any. Falls back to YTDLP_COOKIES_FILE.
-  sessionCookies: Cookie[] | null;
-  userAgent: string | null;
+  requestUserAgent: string | null;
 }
 
 const jobs = new Map<string, Job>();
+// FIFO of queued job ids. A job leaves it when it starts, is cancelled or waits too long.
+const queue: string[] = [];
 const processes = new Map<string, ReturnType<typeof spawn>>();
 const sseClients = new Map<string, Set<(data: string) => void>>();
 
@@ -57,21 +62,99 @@ const CLEANUP_INTERVAL = 5 * 60 * 1000;
 const MAX_ERROR_LENGTH = 500;
 const MAX_OUTPUT_BUFFER = 64 * 1024;
 
-export class TooManyJobsError extends Error {
-  constructor() {
-    super('Server is busy. Please try again in a few minutes.');
-    this.name = 'TooManyJobsError';
+// Raised when a job cannot even be queued (queue full, too many jobs for this session).
+export class JobLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'JobLimitError';
   }
 }
 
-setInterval(() => {
-  const now = Date.now();
+export function sweepJobs(now = Date.now()) {
   for (const [id, job] of jobs) {
-    if (now - job.createdAt > config.jobTtlMs) {
+    if (job.status === 'queued' && now - job.createdAt > config.maxQueueWaitMs) {
+      dequeue(id);
+      finish(job, 'failed', { error: 'Waited too long in the queue. Please try again later.', errorCode: 'queue_timeout' });
+    } else if (job.finishedAt && now - job.finishedAt > config.jobTtlMs) {
       cleanupJob(id);
     }
   }
-}, CLEANUP_INTERVAL).unref();
+}
+
+setInterval(() => sweepJobs(), CLEANUP_INTERVAL).unref();
+
+function dequeue(id: string) {
+  const index = queue.indexOf(id);
+  if (index !== -1) queue.splice(index, 1);
+}
+
+function runningCount(sessionId?: string): number {
+  let count = 0;
+  for (const job of jobs.values()) {
+    if (job.status === 'downloading' && (!sessionId || job.sessionId === sessionId)) count++;
+  }
+  return count;
+}
+
+function activeCount(sessionId: string): number {
+  let count = 0;
+  for (const job of jobs.values()) {
+    if (job.sessionId === sessionId && (job.status === 'queued' || job.status === 'downloading')) count++;
+  }
+  return count;
+}
+
+function broadcastQueuePositions() {
+  queue.forEach((id, index) => emitEvent(id, { type: 'queued', position: index + 1 }));
+}
+
+// Starts queued jobs in arrival order while there are free slots. A job whose session already
+// has MAX_PARALLEL_PER_SESSION downloads running is skipped (it keeps its place).
+function pump() {
+  let started = false;
+  while (runningCount() < config.maxConcurrentJobs) {
+    const index = queue.findIndex(id => runningCount(jobs.get(id)?.sessionId) < config.maxParallelPerSession);
+    if (index === -1) break;
+    const [id] = queue.splice(index, 1);
+    const job = jobs.get(id);
+    if (!job) continue;
+    started = true;
+    startDownload(job);
+  }
+  if (started) broadcastQueuePositions();
+}
+
+function finish(job: Job, status: 'completed' | 'failed', failure?: { error: string; errorCode?: Job['errorCode'] }) {
+  job.status = status;
+  job.finishedAt = Date.now();
+  if (failure) {
+    job.error = failure.error;
+    job.errorCode = failure.errorCode;
+    emitEvent(job.id, { type: 'failed', error: job.error, code: job.errorCode });
+  }
+  // Let the current handler finish before starting the next download.
+  setImmediate(pump);
+}
+
+export function cancelJob(id: string): boolean {
+  const job = jobs.get(id);
+  if (!job || (job.status !== 'queued' && job.status !== 'downloading')) return false;
+  const wasQueued = job.status === 'queued';
+  dequeue(id);
+  const proc = processes.get(id);
+  if (proc) {
+    proc.kill('SIGTERM');
+    processes.delete(id);
+  }
+  removeSecrets(job);
+  finish(job, 'failed', { error: 'Download cancelled.', errorCode: 'cancelled' });
+  if (wasQueued) broadcastQueuePositions();
+  return true;
+}
+
+export function queueStats() {
+  return { running: runningCount(), queued: queue.length };
+}
 
 function removeSecrets(job: Job) {
   if (!job.secretsDir) return;
@@ -92,6 +175,7 @@ function cleanupJob(id: string) {
       processes.delete(id);
     }
     removeSecrets(job);
+    dequeue(id);
     try {
       if (job.tmpDir) fs.rmSync(job.tmpDir, { recursive: true, force: true });
     } catch {}
@@ -150,8 +234,11 @@ function refreshSessionCookies(job: Job) {
 }
 
 export function createJob(params: CreateJobParams): Job {
-  if (processes.size >= config.maxConcurrentJobs) {
-    throw new TooManyJobsError();
+  if (activeCount(params.sessionId) >= config.maxJobsPerSession) {
+    throw new JobLimitError(`You already have ${config.maxJobsPerSession} downloads waiting or in progress. Wait for one to finish.`);
+  }
+  if (queue.length >= config.maxQueueSize) {
+    throw new JobLimitError('The download queue is full. Please try again in a few minutes.');
   }
 
   const id = crypto.randomUUID();
@@ -159,7 +246,7 @@ export function createJob(params: CreateJobParams): Job {
   const job: Job = {
     id,
     url: params.url,
-    status: 'pending',
+    status: 'queued',
     progress: 0,
     files: [],
     format: params.format,
@@ -168,10 +255,14 @@ export function createJob(params: CreateJobParams): Job {
     createdAt: Date.now(),
     sessionId: params.sessionId,
     cookieSource: null,
-    userAgent: params.userAgent,
+    requestUserAgent: params.requestUserAgent,
+    userAgent: null,
   };
   jobs.set(id, job);
-  startDownload(job, params.sessionCookies);
+  queue.push(id);
+  pump();
+  // Still waiting: tell anyone already subscribed where it stands (others get it on subscribe).
+  if (job.status === 'queued') broadcastQueuePositions();
   return { ...job };
 }
 
@@ -236,8 +327,14 @@ export function buildYtDlpArgs(
   return args;
 }
 
-function startDownload(job: Job, sessionCookies: Cookie[] | null) {
+function startDownload(job: Job) {
   job.status = 'downloading';
+
+  // Cookies and User-Agent are read when the download actually starts, so cookies uploaded
+  // while the job was queued are used.
+  const owner = peekSession(job.sessionId);
+  const sessionCookies = owner?.cookies ?? null;
+  job.userAgent = config.forwardUserAgent ? chooseUserAgent(owner, job.requestUserAgent) : null;
 
   let cookieJarPath: string | undefined;
   try {
@@ -251,16 +348,17 @@ function startDownload(job: Job, sessionCookies: Cookie[] | null) {
     // Never log the error object itself in a way that could include cookie contents.
     console.error(`[downloadManager] Cannot prepare cookies for job ${job.id}: ${(err as Error).message}`);
     removeSecrets(job);
-    job.status = 'failed';
-    job.error = job.cookieSource === 'session'
-      ? 'Server misconfiguration: cookies cannot be kept in memory (SECRETS_TMP_DIR).'
-      : 'Server misconfiguration: the YouTube cookies file cannot be used.';
+    finish(job, 'failed', {
+      error: job.cookieSource === 'session'
+        ? 'Server misconfiguration: cookies cannot be kept in memory (SECRETS_TMP_DIR).'
+        : 'Server misconfiguration: the YouTube cookies file cannot be used.',
+    });
     return;
   }
 
   const args = buildYtDlpArgs(job, cookieJarPath);
 
-  const ytProcess = spawn('yt-dlp', args);
+  const ytProcess = spawn(config.ytdlpPath, args);
 
   processes.set(job.id, ytProcess);
 
@@ -268,10 +366,8 @@ function startDownload(job: Job, sessionCookies: Cookie[] | null) {
     if (processes.has(job.id)) {
       ytProcess.kill('SIGTERM');
       removeSecrets(job);
-      job.status = 'failed';
-      job.error = `Download timed out after ${config.downloadTimeoutMs / 60000} minutes. Try again later.`;
-      emitEvent(job.id, { type: 'failed', error: job.error });
       processes.delete(job.id);
+      finish(job, 'failed', { error: `Download timed out after ${config.downloadTimeoutMs / 60000} minutes. Try again later.` });
     }
   }, config.downloadTimeoutMs);
 
@@ -335,10 +431,10 @@ function startDownload(job: Job, sessionCookies: Cookie[] | null) {
     } catch {}
     const audioFiles = allFiles.filter(f => f.endsWith(`.${job.format.ext}`)).sort();
     if (audioFiles.length === 0) {
-      job.status = 'failed';
-      job.error = summarizeError(processOutput, job.cookieSource) || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found');
-      if (isBotCheck(processOutput)) job.errorCode = 'bot_check';
-      emitEvent(job.id, { type: 'failed', error: job.error, code: job.errorCode });
+      finish(job, 'failed', {
+        error: summarizeError(processOutput, job.cookieSource) || (code !== 0 ? `Process exited with code ${code}` : 'Output file not found'),
+        errorCode: isBotCheck(processOutput) ? 'bot_check' : undefined,
+      });
       return;
     }
 
@@ -350,8 +446,8 @@ function startDownload(job: Job, sessionCookies: Cookie[] | null) {
     job.filePath = job.files[0].path;
     job.filename = job.files[0].filename;
 
-    job.status = 'completed';
     job.progress = 100;
+    finish(job, 'completed');
     console.log(`[downloadManager] Job ${job.id} completed. files[0]=${job.filename}, total files=${job.files.length}`);
     emitEvent(job.id, {
       type: 'completed',
@@ -368,9 +464,8 @@ function startDownload(job: Job, sessionCookies: Cookie[] | null) {
     processes.delete(job.id);
     clearTimeout(processTimeout);
     removeSecrets(job);
-    job.status = 'failed';
-    job.error = err.message;
-    emitEvent(job.id, { type: 'failed', error: err.message });
+    if (job.status !== 'downloading') return;
+    finish(job, 'failed', { error: `Could not start yt-dlp: ${err.message}` });
   });
 }
 
@@ -399,6 +494,8 @@ export function subscribe(jobId: string, onEvent: (data: string) => void): () =>
       }));
     } else if (job.status === 'failed') {
       onEvent(JSON.stringify({ type: 'failed', error: job.error, code: job.errorCode }));
+    } else if (job.status === 'queued') {
+      onEvent(JSON.stringify({ type: 'queued', position: queue.indexOf(jobId) + 1 }));
     } else if (job.status === 'downloading' && job.progress > 0) {
       onEvent(JSON.stringify({ type: 'progress', progress: job.progress }));
     }

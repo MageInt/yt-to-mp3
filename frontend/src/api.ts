@@ -18,9 +18,10 @@ export interface TrackFile {
 }
 
 export type JobEvent =
+  | { type: 'queued'; position: number }
   | { type: 'progress'; progress: number }
   | { type: 'completed'; progress: number; filename: string; files: TrackFile[]; isPlaylist: boolean; format: string }
-  | { type: 'failed'; error: string; code?: 'bot_check' };
+  | { type: 'failed'; error: string; code?: 'bot_check' | 'cancelled' | 'queue_timeout' };
 
 export interface SessionInfo {
   hasCookies: boolean;
@@ -74,6 +75,10 @@ export async function uploadCookies(cookies: string): Promise<SessionInfo> {
 
 export async function forgetCookies(): Promise<SessionInfo> {
   return readJson(await fetch(`${API_BASE}/session/cookies`, { method: 'DELETE' }));
+}
+
+export async function cancelJob(id: string): Promise<void> {
+  await fetch(`${API_BASE}/jobs/${id}`, { method: 'DELETE' });
 }
 
 export function triggerDownload(href: string, filename: string) {

@@ -10,7 +10,12 @@ services:
       - "8080:8080"
     environment:
       # See docs/configuration.md for all options.
+      # Download queue: parallel downloads (server / per user), queue bounds
       MAX_CONCURRENT_JOBS: "3"
+      MAX_PARALLEL_PER_SESSION: "1"
+      MAX_JOBS_PER_SESSION: "5"
+      MAX_QUEUE_SIZE: "50"
+      MAX_QUEUE_WAIT_MINUTES: "30"
       # Send the user's browser User-Agent to YouTube (matches their cookies)
       FORWARD_USER_AGENT: "true"
       # Download whole playlists from `list=` links (default: only the video in the URL)

@@ -8,6 +8,7 @@ import {
   FALLBACK_CONFIG,
   fetchConfig,
   fetchSession,
+  cancelJob,
   triggerDownload,
   type AppConfig,
   type JobEvent,
@@ -15,7 +16,7 @@ import {
   type TrackFile,
 } from './api';
 
-type Status = 'idle' | 'pending' | 'downloading' | 'completed' | 'failed';
+type Status = 'idle' | 'pending' | 'queued' | 'downloading' | 'completed' | 'failed';
 
 function formatFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get('format');
@@ -27,6 +28,7 @@ function App() {
   const [format, setFormat] = useState<string>(() => formatFromUrl() ?? 'mp3');
   const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState(0);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [files, setFiles] = useState<TrackFile[]>([]);
@@ -73,6 +75,7 @@ function App() {
     eventSourceRef.current = null;
     setStatus('idle');
     setProgress(0);
+    setQueuePosition(null);
     setError(null);
     setJobId(null);
     setFiles([]);
@@ -102,6 +105,7 @@ function App() {
     setStatus('pending');
 
     let id: string;
+    let initialStatus: string;
     try {
       const res = await fetch(`${API_BASE}/jobs`, {
         method: 'POST',
@@ -112,6 +116,7 @@ function App() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to start the download');
       id = data.id;
+      initialStatus = data.status;
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
         fail('Request timed out. The server may be busy, please try again.');
@@ -122,7 +127,7 @@ function App() {
     }
 
     setJobId(id);
-    setStatus('downloading');
+    setStatus(initialStatus === 'queued' ? 'queued' : 'downloading');
 
     const es = new EventSource(`${API_BASE}/jobs/${id}/progress`);
     eventSourceRef.current = es;
@@ -130,7 +135,12 @@ function App() {
     es.onmessage = (event) => {
       const data: JobEvent = JSON.parse(event.data);
 
-      if (data.type === 'progress') {
+      if (data.type === 'queued') {
+        setStatus('queued');
+        setQueuePosition(data.position);
+      } else if (data.type === 'progress') {
+        setStatus('downloading');
+        setQueuePosition(null);
         setProgress(data.progress);
       } else if (data.type === 'completed') {
         es.close();
@@ -143,6 +153,8 @@ function App() {
         } else {
           triggerDownload(`${API_BASE}/jobs/${id}/file`, data.filename);
         }
+      } else if (data.type === 'failed' && data.code === 'cancelled') {
+        reset();
       } else if (data.type === 'failed') {
         fail(data.error || 'Download failed', data.code);
         if (data.code === 'bot_check') {
@@ -158,7 +170,11 @@ function App() {
 
   const formats = config?.formats ?? null;
   const formatLabel = formats?.find(f => f.id === format)?.label ?? format.toUpperCase();
-  const busy = status === 'pending' || status === 'downloading';
+  const busy = status === 'pending' || status === 'queued' || status === 'downloading';
+
+  const handleCancel = () => {
+    if (jobId) cancelJob(jobId).finally(reset);
+  };
 
   return (
     <>
@@ -189,11 +205,20 @@ function App() {
             onFormatChange={changeFormat}
             playlistsEnabled={config?.playlistsEnabled ?? false}
             busy={busy}
+            busyLabel={status === 'queued' ? 'In queue…' : status === 'downloading' ? 'Downloading…' : 'Starting…'}
             onSubmit={handleSubmit}
           />
         </section>
 
-        {busy && <ProgressBar progress={progress} status={status} formatLabel={formatLabel} />}
+        {busy && (
+          <ProgressBar
+            progress={progress}
+            status={status}
+            queuePosition={queuePosition}
+            formatLabel={formatLabel}
+            onCancel={jobId ? handleCancel : undefined}
+          />
+        )}
 
         {status === 'completed' && files.length > 0 && jobId && (
           <TrackList files={files} jobId={jobId} onReset={reset} />
