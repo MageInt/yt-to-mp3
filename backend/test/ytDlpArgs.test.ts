@@ -60,3 +60,11 @@ test('bot check error is translated into an actionable message', () => {
 test('other errors keep the ERROR: lines only', () => {
   assert.equal(summarizeError('[info] x\nERROR: Video unavailable\n'), 'ERROR: Video unavailable');
 });
+
+test('user agent is forwarded only when present', () => {
+  assert.ok(!buildYtDlpArgs(video).includes('--user-agent'));
+  const ua = 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0';
+  const args = buildYtDlpArgs({ ...video, userAgent: ua });
+  assert.equal(args[args.indexOf('--user-agent') + 1], ua);
+  assert.ok(args.indexOf('--user-agent') < args.indexOf('--'));
+});

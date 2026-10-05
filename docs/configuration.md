@@ -7,6 +7,7 @@ All settings are environment variables read in `backend/src/config.ts`. Invalid 
 | `PORT` | `8080` | HTTP port. |
 | `MAX_CONCURRENT_JOBS` | `3` | Max yt-dlp processes running at once; extra requests get `429`. |
 | `ENABLE_PLAYLISTS` | `false` | `true` downloads the whole playlist when a URL has `list=`. `false`: only the video in the URL is downloaded, playlist-only URLs are refused. |
+| `FORWARD_USER_AGENT` | `true` | Pass a browser User-Agent to yt-dlp (`--user-agent`): the one captured when the user uploaded their cookies (so YouTube sees the browser they come from), else the UA of the download request. Only real browser UAs are forwarded (`Mozilla/5.0 (…`, printable ASCII, ≤ 512 chars); headless/bot/CLI UAs are ignored and yt-dlp's default is used. |
 | `MAX_PLAYLIST_ITEMS` | `50` | Max tracks downloaded from a playlist (`--playlist-end`). Only used when `ENABLE_PLAYLISTS=true`. |
 | `JOB_TTL_MINUTES` | `30` | Jobs and their files are deleted after this age (sweep every 5 min). |
 | `DOWNLOAD_TIMEOUT_MINUTES` | `10` | yt-dlp is killed after this duration. |

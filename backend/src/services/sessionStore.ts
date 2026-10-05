@@ -9,6 +9,8 @@ export interface Session {
   lastSeenAt: number;
   cookies: Cookie[] | null;
   cookiesUpdatedAt: number | null;
+  // Browser User-Agent captured when the cookies were uploaded (sanitized), sent with every download using them.
+  cookiesUserAgent: string | null;
 }
 
 const sessions = new Map<string, Session>();
@@ -20,7 +22,10 @@ function isExpired(session: Session, now: number): boolean {
 
 function destroy(id: string) {
   const session = sessions.get(id);
-  if (session) session.cookies = null;
+  if (session) {
+    session.cookies = null;
+    session.cookiesUserAgent = null;
+  }
   sessions.delete(id);
 }
 
@@ -45,6 +50,7 @@ export function createSession(): Session {
     lastSeenAt: now,
     cookies: null,
     cookiesUpdatedAt: null,
+    cookiesUserAgent: null,
   };
   sessions.set(session.id, session);
   return session;
@@ -63,9 +69,10 @@ export function getSession(id: string | undefined): Session | undefined {
   return session;
 }
 
-export function setSessionCookies(session: Session, cookies: Cookie[] | null) {
+export function setSessionCookies(session: Session, cookies: Cookie[] | null, userAgent: string | null = null) {
   session.cookies = cookies;
   session.cookiesUpdatedAt = cookies ? Date.now() : null;
+  session.cookiesUserAgent = cookies ? userAgent : null;
 }
 
 // Used after a download to store cookies rotated by YouTube. Does not extend the session.
@@ -82,6 +89,8 @@ export function describeSession(session: Session) {
     cookieCount: session.cookies?.length ?? 0,
     cookiesUpdatedAt: session.cookiesUpdatedAt,
     cookiesExpireAt: session.cookies ? earliestExpiry(session.cookies) : null,
+    // The user's own browser UA, shown so they know which browser the cookies are paired with.
+    cookiesUserAgent: session.cookiesUserAgent,
     expiresAt: Math.min(session.lastSeenAt + config.sessionIdleMs, session.createdAt + config.sessionMaxMs),
     idleTimeoutMinutes: config.sessionIdleMs / 60000,
   };

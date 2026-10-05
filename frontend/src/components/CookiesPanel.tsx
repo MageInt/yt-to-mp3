@@ -17,6 +17,25 @@ const insecureTransport =
   && window.location.protocol === 'http:'
   && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
 
+// Short, human label for a User-Agent ("Firefox on Linux"); the full string goes in a tooltip.
+function describeUserAgent(ua: string) {
+  const browser =
+    /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Version\/.*Safari\//.test(ua) ? 'Safari'
+    : 'browser';
+  const os =
+    /iPhone|iPad/.test(ua) ? 'iOS'
+    : /Android/.test(ua) ? 'Android'
+    : /Windows/.test(ua) ? 'Windows'
+    : /Mac OS X/.test(ua) ? 'macOS'
+    : /Linux|X11/.test(ua) ? 'Linux'
+    : null;
+  return os ? `${browser} on ${os}` : browser;
+}
+
 function formatDate(ms: number) {
   return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
@@ -124,6 +143,11 @@ const CookiesPanel = forwardRef<HTMLDetailsElement, Props>(function CookiesPanel
             </li>
             <li>Never sent back to the browser, never shared with other visitors.</li>
             <li>
+              The <strong>User-Agent of the browser you upload from</strong> is saved with them and sent with every
+              download that uses them, so YouTube sees the same browser the cookies come from. It is forgotten with the
+              cookies.
+            </li>
+            <li>
               Wiped when you click <em>Forget</em>, after{' '}
               <span className="mono num">{session?.idleTimeoutMinutes ?? 120}</span> min without activity, or when the
               server restarts.
@@ -144,7 +168,10 @@ const CookiesPanel = forwardRef<HTMLDetailsElement, Props>(function CookiesPanel
               <strong>Close the private window</strong> without signing out: otherwise YouTube rotates the session and the
               export stops working.
             </li>
-            <li>Upload the file below.</li>
+            <li>
+              Upload the file below <strong>from the same browser</strong> you exported it with: its User-Agent is paired
+              with the cookies.
+            </li>
           </ol>
           <p className="body muted">
             Details:{' '}
@@ -181,6 +208,12 @@ const CookiesPanel = forwardRef<HTMLDetailsElement, Props>(function CookiesPanel
             <span className="muted">
               <span className="mono num">{session.cookieCount}</span> cookies
               {session.cookiesExpireAt && <> · expire {formatDate(session.cookiesExpireAt)}</>}
+              {' · '}
+              {session.cookiesUserAgent ? (
+                <span title={session.cookiesUserAgent}>paired with {describeUserAgent(session.cookiesUserAgent)}</span>
+              ) : (
+                <span title="This browser's User-Agent could not be used; yt-dlp's default is sent instead.">default User-Agent</span>
+              )}
             </span>
             <button type="button" className="btn btn-ghost btn-sm danger-text push-right" onClick={handleForget}>
               Forget cookies

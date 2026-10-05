@@ -112,8 +112,12 @@ export function serializeNetscapeCookies(cookies: Cookie[]): string {
   return `# Netscape HTTP Cookie File\n${lines.join('\n')}\n`;
 }
 
-// Earliest expiry among persistent cookies (0 = session cookie), in ms since epoch.
+// Google sign-in cookies (SID, HSID, __Secure-3PSID, LOGIN_INFO…). Short-lived tracking cookies
+// YouTube adds during downloads (GPS, YSC…) are ignored, they say nothing about the session.
+const AUTH_COOKIE = /SID$|^LOGIN_INFO$/;
+
+// Earliest expiry among persistent sign-in cookies, in ms since epoch (null: none found).
 export function earliestExpiry(cookies: Cookie[]): number | null {
-  const times = cookies.filter(c => c.expires > 0).map(c => c.expires * 1000);
+  const times = cookies.filter(c => c.expires > 0 && AUTH_COOKIE.test(c.name)).map(c => c.expires * 1000);
   return times.length ? Math.min(...times) : null;
 }

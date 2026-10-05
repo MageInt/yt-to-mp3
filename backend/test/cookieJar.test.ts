@@ -33,10 +33,18 @@ test('round-trips through serialization', () => {
   assert.deepEqual(second.cookies, first.cookies);
 });
 
-test('earliest expiry ignores session cookies', () => {
+test('earliest expiry only looks at persistent sign-in cookies', () => {
   const result = parseNetscapeCookies(SAMPLE);
   assert.ok(result.ok);
   assert.equal(earliestExpiry(result.cookies), 1800000000 * 1000);
+
+  const shortLived = parseNetscapeCookies(`${SAMPLE}\n.youtube.com\tTRUE\t/\tTRUE\t1700000000\tGPS\t1`);
+  assert.ok(shortLived.ok);
+  assert.equal(earliestExpiry(shortLived.cookies), 1800000000 * 1000);
+
+  const noAuth = parseNetscapeCookies('.youtube.com\tTRUE\t/\tTRUE\t1893456000\tPREF\tf6=4');
+  assert.ok(noAuth.ok);
+  assert.equal(earliestExpiry(noAuth.cookies), null);
 });
 
 test('rejects empty, non-string and oversized input', () => {

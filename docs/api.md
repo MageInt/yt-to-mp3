@@ -17,15 +17,16 @@ Starts a session if there is none (sets the cookie), then returns its state. Nev
   "cookieCount": 12,
   "cookiesUpdatedAt": 1791100000000,
   "cookiesExpireAt": 1825000000000,
+  "cookiesUserAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0",
   "expiresAt": 1791107200000,
   "idleTimeoutMinutes": 120
 }
 ```
 
-`cookiesExpireAt` is the earliest expiry among persistent cookies (ms), `expiresAt` when the session itself ends if idle.
+`cookiesExpireAt` is the earliest expiry among the Google sign-in cookies (`*SID`, `LOGIN_INFO`; ms, `null` if none), `cookiesUserAgent` the browser UA paired with the cookies at upload (`null` if it could not be used), `expiresAt` when the session itself ends if idle.
 
 ### `PUT /api/session/cookies`
-Body: `{"cookies": "<content of a Netscape cookies.txt>"}` (file up to 100 kB). Only `youtube.com` / `google.com` cookies are kept. Rate-limited like job creation.
+Body: `{"cookies": "<content of a Netscape cookies.txt>"}` (file up to 100 kB). Only `youtube.com` / `google.com` cookies are kept. The request's `User-Agent` (if it is a real browser UA) is saved with them and used for every download that uses these cookies. Rate-limited like job creation.
 
 | Status | When |
 |--------|------|
@@ -54,7 +55,7 @@ Settings the UI needs:
 Formats (ids): `mp3`, `m4a` (AAC), `opus`, `ogg` (Vorbis), `flac`, `wav`. Source of truth: `backend/src/services/audioFormats.ts`.
 
 ## `POST /api/jobs`
-Starts a session if needed; the job belongs to it and uses its cookies (else `YTDLP_COOKIES_FILE`, if set). Body: `{"url": "<YouTube URL>", "format": "<format id>"}` (max 10 kB). `format` is optional (default `mp3`).
+Starts a session if needed; the job belongs to it and uses its cookies (else `YTDLP_COOKIES_FILE`, if set). User-Agent sent to yt-dlp (`FORWARD_USER_AGENT`): the one saved with the session's cookies; without cookies, the request's own UA if it is a real browser UA. Body: `{"url": "<YouTube URL>", "format": "<format id>"}` (max 10 kB). `format` is optional (default `mp3`).
 
 | Status | Body | When |
 |--------|------|------|

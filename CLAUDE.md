@@ -19,7 +19,8 @@ backend/src/routes/                 jobs.ts (/api/jobs, /api/config), session.ts
 backend/src/middleware/session.ts   session cookie, requireSession, same-origin (CSRF) check
 backend/src/services/               downloadManager (yt-dlp, SSE, cleanup), urlValidator (YouTube allowlist,
                                     video/playlist detection), audioFormats (output formats),
-                                    sessionStore (in-memory sessions), cookieJar (cookies.txt parser)
+                                    sessionStore (in-memory sessions), cookieJar (cookies.txt parser),
+                                    userAgent (UA paired with cookies at upload, forwarded to yt-dlp)
 backend/test/                       node:test unit + HTTP tests + yt-dlp args
 frontend/src/                       App.tsx + components (DownloadForm, ProgressBar, TrackList, CookiesPanel), api.ts
 frontend/src/styles/theme.css       Dorian UI tokens (dark only) + fonts/; app styles in src/index.css

@@ -18,6 +18,7 @@ Public-facing web app with no authentication that runs an external downloader on
 | Memory growth | yt-dlp output buffer capped at 64 kB, error messages capped at 500 chars | `downloadManager.ts` |
 | IP exposure to YouTube | Optional `YTDLP_PROXY` (e.g. Gluetun VPN); fails closed if the proxy is down | `config.ts`, `downloadManager.ts` |
 | Leaking YouTube session cookies | See [User cookies](#user-cookies) | `sessionStore.ts`, `cookieJar.ts`, `downloadManager.ts` |
+| Header injection via forwarded User-Agent | Only printable ASCII, `Mozilla/5.0 (…` prefix, ≤ 512 chars; passed as a `spawn` argument (no shell) | `services/userAgent.ts` |
 | Accessing someone else's files | Jobs bound to the creating session; other callers get `404` | `routes/jobs.ts` |
 | CSRF on state-changing routes | `SameSite=Strict` session cookie, JSON-only bodies, `Sec-Fetch-Site` / `Origin` check | `middleware/session.ts` |
 | Cross-origin abuse | No CORS headers (same-origin only) | `app.ts` |
@@ -34,6 +35,7 @@ Users can upload a YouTube `cookies.txt` to get past the "not a bot" check. Thes
 - **Bound to one browser.** Session id: 256-bit random, in an `HttpOnly`, `SameSite=Strict` cookie (`Secure` over HTTPS). Never readable by page scripts, never shared between visitors.
 - **Minimized.** The upload is parsed strictly (Netscape format, RFC 6265 name/value charset, 300 cookies and 100 kB max). Only `youtube.com` / `google.com` cookies are kept, and the jar is rebuilt from the parsed fields, so nothing else from the file reaches yt-dlp.
 - **Never echoed.** The API only returns counts and dates, never names or values. The page clears the textarea after upload.
+- **Paired User-Agent.** The uploading browser's UA (sanitized, see `userAgent.ts`) is stored with the cookies and sent with every download using them, even if the download is started from another device. It is not secret, is returned to the user, and is wiped with the cookies.
 - **Reused across downloads.** The session keeps the cookies for every download until it expires; a download never consumes them.
 - **RAM-only while in use.** yt-dlp needs a file: for each download, a copy of the jar is written to `SECRETS_TMP_DIR` (`/dev/shm`, tmpfs) in a `0700` directory with a `0600` file, for the duration of the process only, then deleted. If that directory is not writable, the download fails rather than falling back to disk.
 - **Limited lifetime.** Wiped on *Forget*, after `SESSION_IDLE_MINUTES` of inactivity, after `SESSION_MAX_HOURS`, when evicted (`MAX_SESSIONS`), or on restart.

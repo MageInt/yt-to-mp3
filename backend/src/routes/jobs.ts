@@ -5,6 +5,7 @@ import { currentSession, session } from '../middleware/session.js';
 import { createJob, getJob, subscribe, TooManyJobsError, type Job } from '../services/downloadManager.js';
 import { AUDIO_FORMATS, DEFAULT_FORMAT, getAudioFormat } from '../services/audioFormats.js';
 import { validateYoutubeUrl } from '../services/urlValidator.js';
+import { chooseUserAgent } from '../services/userAgent.js';
 
 export const jobsRouter = Router();
 
@@ -57,6 +58,7 @@ jobsRouter.post('/jobs', createJobLimiter, session({ create: true }), (req, res)
       isPlaylist: result.isPlaylist,
       sessionId: owner.id,
       sessionCookies: owner.cookies,
+      userAgent: config.forwardUserAgent ? chooseUserAgent(owner, req.get('user-agent')) : null,
     });
     res.status(201).json({ id: job.id, status: job.status });
   } catch (err) {

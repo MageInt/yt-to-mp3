@@ -21,6 +21,8 @@ export const config = {
   trustProxy: boolFromEnv('TRUST_PROXY', false),
   // Playlist downloads (whole list from a `list=` URL). Off: only the video in the URL is downloaded.
   enablePlaylists: boolFromEnv('ENABLE_PLAYLISTS', false),
+  // Pass the user's browser User-Agent to yt-dlp, so requests match the browser the cookies come from.
+  forwardUserAgent: boolFromEnv('FORWARD_USER_AGENT', true),
   // Proxy for all yt-dlp traffic, e.g. http://192.168.1.10:8890 (empty = direct connection).
   ytdlpProxy: process.env.YTDLP_PROXY?.trim() || '',
   // Server-wide fallback cookies.txt, used when the user's session has no cookies of its own.

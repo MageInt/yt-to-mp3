@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { currentSession, requireSession, session } from '../middleware/session.js';
 import { MAX_COOKIES_TEXT_LENGTH, parseNetscapeCookies } from '../services/cookieJar.js';
 import { describeSession, setSessionCookies } from '../services/sessionStore.js';
+import { sanitizeUserAgent } from '../services/userAgent.js';
 
 export const sessionRouter = Router();
 
@@ -39,7 +40,8 @@ sessionRouter.put(
       return;
     }
     const current = currentSession(res)!;
-    setSessionCookies(current, result.cookies);
+    const userAgent = config.forwardUserAgent ? sanitizeUserAgent(req.get('user-agent')) : null;
+    setSessionCookies(current, result.cookies, userAgent);
     res.json(describeSession(current));
   },
 );

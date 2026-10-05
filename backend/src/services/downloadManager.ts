@@ -31,6 +31,8 @@ export interface Job {
   // Owner: only this session can read the job's progress and files.
   sessionId: string;
   cookieSource: CookieSource;
+  // Sanitized browser User-Agent of the requester, forwarded to yt-dlp (see userAgent.ts).
+  userAgent: string | null;
   // RAM-only directory holding the cookie jar while yt-dlp runs.
   secretsDir?: string;
 }
@@ -44,6 +46,7 @@ export interface CreateJobParams {
   sessionId: string;
   // Cookies uploaded by the user for this session, if any. Falls back to YTDLP_COOKIES_FILE.
   sessionCookies: Cookie[] | null;
+  userAgent: string | null;
 }
 
 const jobs = new Map<string, Job>();
@@ -165,6 +168,7 @@ export function createJob(params: CreateJobParams): Job {
     createdAt: Date.now(),
     sessionId: params.sessionId,
     cookieSource: null,
+    userAgent: params.userAgent,
   };
   jobs.set(id, job);
   startDownload(job, params.sessionCookies);
@@ -186,7 +190,10 @@ export function checkCookiesSetup(): void {
   }
 }
 
-export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 'format'>, cookieJarPath?: string): string[] {
+export function buildYtDlpArgs(
+  job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 'format'> & Partial<Pick<Job, 'userAgent'>>,
+  cookieJarPath?: string,
+): string[] {
   const args: string[] = [
     '--socket-timeout', '30',
     '--retries', '3',
@@ -217,6 +224,10 @@ export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 
 
   if (cookieJarPath) {
     args.push('--cookies', cookieJarPath);
+  }
+
+  if (job.userAgent) {
+    args.push('--user-agent', job.userAgent);
   }
 
   // `--` stops option parsing so the URL can never be read as a yt-dlp flag.

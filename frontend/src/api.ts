@@ -27,6 +27,7 @@ export interface SessionInfo {
   cookieCount: number;
   cookiesUpdatedAt: number | null;
   cookiesExpireAt: number | null;
+  cookiesUserAgent: string | null;
   expiresAt: number;
   idleTimeoutMinutes: number;
 }

@@ -30,10 +30,12 @@ async function newSession(): Promise<string> {
   return setCookie.split(';')[0];
 }
 
-function putCookies(sid: string | null, cookies: unknown) {
+const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0';
+
+function putCookies(sid: string | null, cookies: unknown, userAgent = FIREFOX) {
   return fetch(`${baseUrl}/api/session/cookies`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(sid ? { Cookie: sid } : {}) },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent, ...(sid ? { Cookie: sid } : {}) },
     body: JSON.stringify({ cookies }),
   });
 }
@@ -75,6 +77,7 @@ test('upload, status and forget cookies, never echoing their values', async () =
   assert.equal(body.hasCookies, true);
   assert.equal(body.cookieCount, 2);
   assert.equal(body.cookiesExpireAt, 1893456000 * 1000);
+  assert.equal(body.cookiesUserAgent, FIREFOX);
 
   const status = await (await fetch(`${baseUrl}/api/session`, { headers: { Cookie: sid } })).json();
   assert.equal(status.hasCookies, true);
@@ -85,7 +88,9 @@ test('upload, status and forget cookies, never echoing their values', async () =
 
   const del = await fetch(`${baseUrl}/api/session/cookies`, { method: 'DELETE', headers: { Cookie: sid } });
   assert.equal(del.status, 200);
-  assert.equal((await del.json()).hasCookies, false);
+  const cleared = await del.json();
+  assert.equal(cleared.hasCookies, false);
+  assert.equal(cleared.cookiesUserAgent, null);
 });
 
 test('invalid cookie files are refused with a clear error', async () => {
@@ -133,4 +138,11 @@ test('jobs are only visible to the session that created them', async () => {
 
   const mine = await fetch(`${baseUrl}/api/jobs/${id}/file`, { headers: { Cookie: owner } });
   assert.notEqual(mine.status, 404);
+});
+
+test('automation UA at upload is not captured', async () => {
+  const sid = await newSession();
+  const res = await putCookies(sid, COOKIES, 'curl/8.10.1');
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).cookiesUserAgent, null);
 });
