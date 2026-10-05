@@ -30,13 +30,22 @@ All settings are environment variables read in `backend/src/config.ts`. Invalid 
 | `CONVERT_TIMEOUT_MINUTES` | `5` | ffmpeg is killed after this. |
 | `FFMPEG_PATH` | `ffmpeg` | ffmpeg executable (tests use `backend/test/fixtures/fake-ffmpeg.mjs`). |
 | `YTDLP_PATH` | `yt-dlp` | yt-dlp executable. Only useful for tests (`backend/test/fixtures/fake-yt-dlp.mjs`). |
-| `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so the rate limit uses the real client IP (`X-Forwarded-For`). |
+| `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy: real client IP (`X-Forwarded-For`) for the rate limit, `X-Forwarded-Proto` for the `Secure` cookie, `X-Forwarded-Host` for the same-origin check. See [Behind a reverse proxy](#behind-a-reverse-proxy). |
 
 Set in the image (no need to change): `NODE_ENV=production`, `TMPDIR=/app/tmp`.
 
 ## Routing downloads through a VPN (Gluetun)
 
 Point `YTDLP_PROXY` at the HTTP proxy of a Gluetun container (`HTTPPROXY=on`) using the **host's LAN IP** and the published port, e.g. `YTDLP_PROXY=http://192.168.1.10:8890`. Only yt-dlp traffic (YouTube API, audio streams) goes through the VPN; the web UI stays on the normal network, in its own stack. Check with `docker logs` on Gluetun or by watching a download fail when the proxy is stopped.
+
+## Behind a reverse proxy
+
+Nginx Proxy Manager, Traefik, Caddy, plain Nginx… Recommended, since it adds HTTPS (cookies and the extension token travel encrypted).
+
+- Set `TRUST_PROXY=true`: real client IP for the rate limit, `Secure` session cookie when the proxy sends `X-Forwarded-Proto: https` (`COOKIE_SECURE=auto`). The app trusts **one** proxy hop.
+- Nothing special for the progress stream (SSE): the app sends `X-Accel-Buffering: no` (no Nginx buffering) and a heartbeat every 20 s (survives the default 60 s read timeout while a job is queued or converting). No websocket needed.
+- Extension uploads (`/api/convert`) can be large: allow bodies up to `MAX_UPLOAD_MB`. Plain Nginx defaults to 1 MB: add `client_max_body_size 200m;` (in Nginx Proxy Manager: *Advanced* tab of the proxy host). Traefik and Caddy have no limit by default.
+- The same-origin (CSRF) check works when the proxy forwards `Host` without the port (`proxy_set_header Host $host`, the Nginx Proxy Manager default) on a non-standard port such as `https://yt.example.home:8094`.
 
 ## "Sign in to confirm you're not a bot"
 

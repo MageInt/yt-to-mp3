@@ -63,19 +63,30 @@ export function sameOriginOnly(req: Request, res: Response, next: NextFunction) 
 
   const origin = req.headers.origin;
   if (origin) {
-    let originHost: string;
+    let originUrl: URL;
     try {
-      originHost = new URL(origin).host;
+      originUrl = new URL(origin);
     } catch {
       res.status(403).json({ error: 'Cross-site request refused' });
       return;
     }
     const forwarded = config.trustProxy ? req.headers['x-forwarded-host'] : undefined;
-    const host = (typeof forwarded === 'string' && forwarded.split(',')[0].trim()) || req.headers.host;
-    if (originHost !== host) {
+    const host = (typeof forwarded === 'string' && forwarded.split(',')[0].trim()) || req.headers.host || '';
+    if (!originMatchesHost(originUrl, host)) {
       res.status(403).json({ error: 'Cross-site request refused' });
       return;
     }
   }
   next();
+}
+
+// Reverse proxies often forward `Host: $host`, i.e. without the port, while the browser's Origin
+// keeps a non-default port (https://example.home:8094). When the forwarded host has no port,
+// compare host names only.
+export function originMatchesHost(origin: URL, rawHost: string): boolean {
+  const host = rawHost.toLowerCase();
+  if (!host) return false;
+  if (origin.host.toLowerCase() === host) return true;
+  const hostHasPort = /:\d+$/.test(host);
+  return !hostHasPort && origin.hostname.toLowerCase() === host.replace(/^\[|\]$/g, '');
 }

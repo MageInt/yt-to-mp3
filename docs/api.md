@@ -87,7 +87,7 @@ Server-Sent Events stream (`text/event-stream`). Each event is `data: <json>`:
 - `{"type":"completed","progress":100,"filename":"x.mp3","files":[{"filename":"x.mp3"}],"isPlaylist":false,"format":"mp3"}`
 - `{"type":"failed","error":"...","code":"bot_check"}`: `code` is present only for known causes: `bot_check` (YouTube asked to "confirm you're not a bot"; the UI then opens the cookies section), `cancelled`, `queue_timeout`.
 
-On subscription, the current state is replayed (completed / failed / current progress). `404` if the job is unknown or belongs to another session.
+Headers include `X-Accel-Buffering: no` (no buffering by Nginx), and a comment line `: ping` is sent every 20 s so reverse proxies keep the stream open while nothing happens (queue, conversion). On subscription, the current state is replayed (completed / failed / current progress). `404` if the job is unknown or belongs to another session.
 
 ## `GET /api/jobs/:id/file`
 Downloads the first (or only) audio file. `404` unknown job, `400 {"error":"File not ready","status":...}` if not completed.

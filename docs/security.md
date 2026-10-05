@@ -24,7 +24,7 @@ Public-facing web app with no authentication that runs an external downloader on
 | Leaked download link (`delivery=link`) | 256-bit random id, 10 min lifetime, max 20 stored results, deleted on expiry | `services/convertResults.ts` |
 | Malicious file sent to ffmpeg | Content type allowlist (webm/mp4), explicit demuxer, `-protocol_whitelist file`, audio stream only, metadata stripped (`-map_metadata -1`), timeout, temp dir deleted after the response | `services/converter.ts` |
 | Accessing someone else's files | Jobs bound to the creating session; other callers get `404` | `routes/jobs.ts` |
-| CSRF on state-changing routes | `SameSite=Strict` session cookie, JSON-only bodies, `Sec-Fetch-Site` / `Origin` check | `middleware/session.ts` |
+| CSRF on state-changing routes | `SameSite=Strict` session cookie, JSON-only bodies, `Sec-Fetch-Site` / `Origin` check (host names compared when a proxy forwards `Host` without the port) | `middleware/session.ts` |
 | Cross-origin abuse | No CORS headers (same-origin only) | `app.ts` |
 | XSS / clickjacking / sniffing | `helmet` (CSP `default-src 'self'`, `frame-ancestors 'self'`, `nosniff`…), `x-powered-by` off | `app.ts` |
 | Path traversal on download | Files served only from the job's `files` list, by index | `routes/jobs.ts` |

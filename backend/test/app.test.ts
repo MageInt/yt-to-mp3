@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../src/app.js';
+import { originMatchesHost } from '../src/middleware/session.js';
 
 let server: Server;
 let baseUrl: string;
@@ -118,4 +119,25 @@ test('unknown /api route returns JSON 404 instead of hanging', async () => {
   const res = await fetch(`${baseUrl}/api/does-not-exist`, { signal: AbortSignal.timeout(2000) });
   assert.equal(res.status, 404);
   assert.deepEqual(await res.json(), { error: 'Not found' });
+});
+
+test('same-origin check tolerates proxies that drop the port from Host', () => {
+  const origin = new URL('https://yt.example.home:8094');
+  assert.equal(originMatchesHost(origin, 'yt.example.home:8094'), true);
+  assert.equal(originMatchesHost(origin, 'yt.example.home'), true);
+  assert.equal(originMatchesHost(origin, 'YT.Example.Home'), true);
+  assert.equal(originMatchesHost(origin, 'yt.example.home:443'), false);
+  assert.equal(originMatchesHost(origin, 'evil.example'), false);
+  assert.equal(originMatchesHost(new URL('https://evil.example:8094'), 'yt.example.home'), false);
+  assert.equal(originMatchesHost(origin, ''), false);
+});
+
+test('an Origin on another port is refused when Host carries its own port', async () => {
+  const res = await fetch(`${baseUrl}/api/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'http://127.0.0.1:8094' },
+    body: JSON.stringify({ url: 'not-a-valid-url' }),
+  });
+  // Host is 127.0.0.1:<test port>: both have ports and they differ.
+  assert.equal(res.status, 403);
 });
