@@ -26,7 +26,7 @@ Browser ──HTTP──▶ Express (backend/src/app.ts)
 ## Job lifecycle
 
 1. `POST /api/jobs` validates the URL and the format, checks the concurrency limit, creates a temp dir (`$TMPDIR/yt-dlp-*`) and spawns `yt-dlp`.
-2. `buildYtDlpArgs` builds the command line (adds `--proxy` when `YTDLP_PROXY` is set). Playlist mode only when `ENABLE_PLAYLISTS=true` and the URL has `list=` (`--playlist-end MAX_PLAYLIST_ITEMS`); otherwise `--no-playlist`, so only the video in the URL is fetched.
+2. `buildYtDlpArgs` builds the command line (adds `--proxy` when `YTDLP_PROXY` is set, `--cookies <tmpDir>/cookies.txt` when `YTDLP_COOKIES_FILE` is set; the file is copied there first). Playlist mode only when `ENABLE_PLAYLISTS=true` and the URL has `list=` (`--playlist-end MAX_PLAYLIST_ITEMS`); otherwise `--no-playlist`, so only the video in the URL is fetched.
 3. `yt-dlp` stdout is parsed for `[download] NN%` lines. Values are queued and emitted every 250 ms over SSE so the progress bar moves smoothly instead of jumping 0→100.
 4. On process exit, files with the format's extension in the temp dir become `job.files`. The job is `completed` (or `failed` with a short error summary).
 5. The client downloads via `/api/jobs/:id/file` (single) or `/api/jobs/:id/files/:index` (playlist).

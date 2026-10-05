@@ -43,3 +43,4 @@ local-tests/
 
 # Downloads (runtime artifacts - not committed)
 downloads/
+cookies.txt

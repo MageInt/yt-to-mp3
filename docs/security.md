@@ -17,6 +17,7 @@ Public-facing web app with no authentication that runs an external downloader on
 | Request flooding | `express-rate-limit` on `POST /api/jobs`, 10 kB JSON body | `routes/jobs.ts`, `app.ts` |
 | Memory growth | yt-dlp output buffer capped at 64 kB, error messages capped at 500 chars | `downloadManager.ts` |
 | IP exposure to YouTube | Optional `YTDLP_PROXY` (e.g. Gluetun VPN); fails closed if the proxy is down | `config.ts`, `downloadManager.ts` |
+| Leaking YouTube session cookies | `YTDLP_COOKIES_FILE` mounted read-only, copied per job with mode `0600` into the job's temp dir (deleted with the job), never exposed over HTTP; use a secondary account | `downloadManager.ts`, `docs/configuration.md` |
 | Cross-origin abuse | No CORS headers (same-origin only) | `app.ts` |
 | XSS / clickjacking / sniffing | `helmet` (CSP `default-src 'self'`, `frame-ancestors 'self'`, `nosniff`…), `x-powered-by` off | `app.ts` |
 | Path traversal on download | Files served only from the job's `files` list, by index | `routes/jobs.ts` |

@@ -23,4 +23,7 @@ export const config = {
   enablePlaylists: boolFromEnv('ENABLE_PLAYLISTS', false),
   // Proxy for all yt-dlp traffic, e.g. http://192.168.1.10:8890 (empty = direct connection).
   ytdlpProxy: process.env.YTDLP_PROXY?.trim() || '',
+  // Netscape cookies.txt exported from a YouTube session, to get past the "not a bot" check.
+  // Copied into each job's temp dir, so it can be mounted read-only.
+  ytdlpCookiesFile: process.env.YTDLP_COOKIES_FILE?.trim() || '',
 };

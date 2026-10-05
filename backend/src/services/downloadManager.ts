@@ -66,7 +66,18 @@ function cleanupJob(id: string) {
   sseClients.delete(id);
 }
 
-function summarizeError(output: string): string {
+const COOKIES_FILENAME = 'cookies.txt';
+
+const BOT_CHECK_MESSAGE =
+  'YouTube is asking to confirm this is not a bot (common on VPN or datacenter IPs). '
+  + 'The server administrator needs to set YTDLP_COOKIES_FILE, see docs/configuration.md.';
+
+export function summarizeError(output: string): string {
+  if (/Sign in to confirm you.re not a bot/i.test(output)) {
+    return config.ytdlpCookiesFile
+      ? 'YouTube is asking to confirm this is not a bot, even with the configured cookies. They may have expired: export them again.'
+      : BOT_CHECK_MESSAGE;
+  }
   const errorLines = output.split('\n').filter(line => line.startsWith('ERROR:'));
   const summary = (errorLines.length > 0 ? errorLines.join('\n') : output).trim();
   return summary.length > MAX_ERROR_LENGTH ? `${summary.slice(0, MAX_ERROR_LENGTH)}…` : summary;
@@ -83,6 +94,16 @@ export function createJob(url: string, format: AudioFormat, isPlaylist: boolean)
   jobs.set(id, job);
   startDownload(job);
   return { ...job };
+}
+
+export function checkCookiesFile(): void {
+  if (!config.ytdlpCookiesFile) return;
+  try {
+    fs.accessSync(config.ytdlpCookiesFile, fs.constants.R_OK);
+    console.log(`[downloadManager] Using cookies file ${config.ytdlpCookiesFile}`);
+  } catch {
+    console.error(`[downloadManager] YTDLP_COOKIES_FILE=${config.ytdlpCookiesFile} is not readable by this user (uid ${process.getuid?.()})`);
+  }
 }
 
 export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 'format'>): string[] {
@@ -114,6 +135,11 @@ export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 
     args.push('--proxy', config.ytdlpProxy);
   }
 
+  if (config.ytdlpCookiesFile) {
+    // yt-dlp rewrites the cookie jar on exit: point it at the job's private copy.
+    args.push('--cookies', path.join(job.tmpDir, COOKIES_FILENAME));
+  }
+
   // `--` stops option parsing so the URL can never be read as a yt-dlp flag.
   args.push('--', job.url);
 
@@ -122,6 +148,18 @@ export function buildYtDlpArgs(job: Pick<Job, 'url' | 'tmpDir' | 'isPlaylist' | 
 
 function startDownload(job: Job) {
   job.status = 'downloading';
+
+  if (config.ytdlpCookiesFile) {
+    try {
+      fs.copyFileSync(config.ytdlpCookiesFile, path.join(job.tmpDir, COOKIES_FILENAME));
+      fs.chmodSync(path.join(job.tmpDir, COOKIES_FILENAME), 0o600);
+    } catch (err) {
+      console.error('[downloadManager] Cannot read cookies file:', err);
+      job.status = 'failed';
+      job.error = 'Server misconfiguration: the YouTube cookies file cannot be read.';
+      return;
+    }
+  }
 
   const args = buildYtDlpArgs(job);
 

@@ -1,7 +1,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from '../src/config.js';
-import { buildYtDlpArgs } from '../src/services/downloadManager.js';
+import { buildYtDlpArgs, summarizeError } from '../src/services/downloadManager.js';
 import { getAudioFormat } from '../src/services/audioFormats.js';
 
 const mp3 = getAudioFormat('mp3')!;
@@ -10,6 +10,7 @@ const playlist = { url: 'https://www.youtube.com/playlist?list=PL1', tmpDir: '/t
 
 afterEach(() => {
   config.ytdlpProxy = '';
+  config.ytdlpCookiesFile = '';
 });
 
 test('URL is always last, right after --', () => {
@@ -38,4 +39,24 @@ test('YTDLP_PROXY is passed to yt-dlp before the URL', () => {
 test('audio format is passed to yt-dlp', () => {
   const args = buildYtDlpArgs({ ...video, format: getAudioFormat('ogg')! });
   assert.equal(args[args.indexOf('--audio-format') + 1], 'vorbis');
+});
+
+test('cookies: yt-dlp gets the per-job copy, never the mounted file', () => {
+  assert.ok(!buildYtDlpArgs(video).includes('--cookies'));
+  config.ytdlpCookiesFile = '/config/cookies.txt';
+  const args = buildYtDlpArgs(video);
+  assert.equal(args[args.indexOf('--cookies') + 1], '/tmp/x/cookies.txt');
+  assert.ok(args.indexOf('--cookies') < args.indexOf('--'));
+});
+
+const BOT_OUTPUT = "ERROR: [youtube] THh5ykVxpSg: Sign in to confirm you\u2019re not a bot. Use --cookies-from-browser or --cookies";
+
+test('bot check error is translated into an actionable message', () => {
+  assert.match(summarizeError(BOT_OUTPUT), /YTDLP_COOKIES_FILE/);
+  config.ytdlpCookiesFile = '/config/cookies.txt';
+  assert.match(summarizeError(BOT_OUTPUT), /may have expired/);
+});
+
+test('other errors keep the ERROR: lines only', () => {
+  assert.equal(summarizeError('[info] x\nERROR: Video unavailable\n'), 'ERROR: Video unavailable');
 });

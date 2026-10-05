@@ -53,6 +53,8 @@ docker compose up
 
 Open [http://localhost:8080](http://localhost:8080), paste a YouTube URL, pick a format, click Download.
 
+If downloads fail with *Sign in to confirm you're not a bot*, YouTube distrusts the server's IP: see [cookies setup](docs/configuration.md#sign-in-to-confirm-youre-not-a-bot).
+
 Limits (concurrent jobs, playlist size, rate limit…) are configurable through environment variables: see [docs/configuration.md](docs/configuration.md).
 
 ## Features

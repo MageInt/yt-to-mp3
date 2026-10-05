@@ -20,8 +20,12 @@ services:
       RATE_LIMIT_MAX: "20"
       # Route yt-dlp through an HTTP/SOCKS proxy, e.g. a Gluetun VPN: http://192.168.1.10:8890
       YTDLP_PROXY: ""
+      # Netscape cookies.txt to get past YouTube's "not a bot" check (see docs/configuration.md)
+      # YTDLP_COOKIES_FILE: /config/cookies.txt
       # Set to "true" behind a reverse proxy (Traefik, Nginx Proxy Manager…).
       TRUST_PROXY: "false"
+    # volumes:
+    #   - ./cookies.txt:/config/cookies.txt:ro
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
