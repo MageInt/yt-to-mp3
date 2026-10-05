@@ -152,6 +152,13 @@ export function cancelJob(id: string): boolean {
   return true;
 }
 
+// Cancels every queued or running job (server shutdown, tests).
+export function cancelAllJobs() {
+  for (const [id, job] of jobs) {
+    if (job.status === 'queued' || job.status === 'downloading') cancelJob(id);
+  }
+}
+
 export function queueStats() {
   return { running: runningCount(), queued: queue.length };
 }

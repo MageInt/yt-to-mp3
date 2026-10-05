@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { createApp } from './app.js';
-import { checkCookiesSetup } from './services/downloadManager.js';
+import { cancelAllJobs, checkCookiesSetup } from './services/downloadManager.js';
 
 checkCookiesSetup();
 if (process.env.CONVERT_TOKEN && !config.convertToken) {
@@ -19,6 +19,8 @@ const server = app.listen(config.port, () => {
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     console.log(`Received ${signal}, shutting down`);
+    // Kill running yt-dlp processes instead of leaving them orphaned.
+    cancelAllJobs();
     server.close(() => process.exit(0));
     server.closeAllConnections();
   });

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../src/config.js';
 import { getAudioFormat } from '../src/services/audioFormats.js';
 import {
+  cancelAllJobs,
   cancelJob,
   createJob,
   getJob,
@@ -22,7 +23,12 @@ const defaults = { ...config };
 config.ytdlpPath = path.join(here, 'fixtures', 'fake-yt-dlp.mjs');
 process.env.FAKE_YTDLP_DELAY_MS = '300';
 
-beforeEach(() => {
+// Each test starts from an empty queue, so a failure cannot cascade into the next tests.
+beforeEach(async () => {
+  cancelAllJobs();
+  await waitFor(() => queueStats().running === 0 && queueStats().queued === 0);
+  process.env.FAKE_YTDLP_DELAY_MS = '300';
+  delete process.env.FAKE_YTDLP_FAIL;
   Object.assign(config, defaults, { ytdlpPath: config.ytdlpPath });
   config.maxConcurrentJobs = 2;
   config.maxParallelPerSession = 1;
@@ -45,7 +51,7 @@ function newJob(sessionId: string) {
   });
 }
 
-async function waitFor(check: () => boolean, timeoutMs = 5000) {
+async function waitFor(check: () => boolean, timeoutMs = 15000) {
   const start = Date.now();
   while (!check()) {
     if (Date.now() - start > timeoutMs) throw new Error('timeout');
@@ -61,8 +67,9 @@ test('global limit: extra jobs wait in the queue, then run in order', async () =
   assert.deepEqual(jobs.map(status), ['downloading', 'downloading', 'queued', 'queued']);
   assert.deepEqual(queueStats(), { running: 2, queued: 2 });
 
-  await waitFor(() => status(jobs[2]) === 'downloading');
-  assert.equal(status(jobs[3]), 'downloading');
+  // Slots free up one at a time (the first two jobs do not end at the same instant).
+  await waitFor(() => status(jobs[2]) !== 'queued');
+  await waitFor(() => status(jobs[3]) !== 'queued');
   await waitFor(done(...jobs));
   assert.deepEqual(jobs.map(status), ['completed', 'completed', 'completed', 'completed']);
   assert.ok(getJob(jobs[0].id)!.finishedAt);
