@@ -21,6 +21,8 @@ Browser ──HTTP──▶ Express (backend/src/app.ts)
 | `backend/src/routes/jobs.ts` | HTTP endpoints for jobs (see [api.md](api.md)). |
 | `backend/src/services/urlValidator.ts` | YouTube host allowlist (SSRF protection), video / playlist detection. |
 | `backend/src/middleware/session.ts` | Session cookie handling (`yt2mp3_sid`), `requireSession`, same-origin check for state-changing requests (CSRF). |
+| `backend/src/routes/convert.ts` | `/api/convert` for the browser extension (bearer token, mounted before the same-origin check). |
+| `backend/src/services/converter.ts` | ffmpeg conversion of uploaded captures (fixed demuxer, `file` protocol only, timeout, concurrency cap). |
 | `backend/src/routes/session.ts` | `/api/session` and `/api/session/cookies`. |
 | `backend/src/services/sessionStore.ts` | In-memory sessions (idle / max lifetime, eviction) holding uploaded cookies. |
 | `backend/src/services/cookieJar.ts` | Netscape cookies.txt parser: validation, YouTube/Google filter, rebuild. |
@@ -60,3 +62,7 @@ In dev, Vite proxies `/api` to `localhost:3001`.
 ## Container
 
 Multi-stage `Dockerfile`: frontend build → backend build → runtime on `node:24-alpine` with `ffmpeg`, `python3` and `yt-dlp[default]` installed from PyPI in a venv (`/opt/yt-dlp`). `/etc/yt-dlp.conf` sets `--js-runtimes node` so yt-dlp can solve YouTube JS challenges with the bundled Node. Runs as user `node`, with a `HEALTHCHECK` on `/api/health`.
+
+## Browser extension
+
+`extension/` (Firefox, MV3) captures audio in the user's browser from YouTube's own player and posts it to `/api/convert`; the server only runs ffmpeg. Independent from the yt-dlp flow above. Details: [extension.md](extension.md).

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="../styles/theme.css" />
+    <link rel="stylesheet" href="options.css" />
+    <title>yt-to-mp3 capture settings</title>
+  </head>
+  <body>
+    <main class="page stack">
+      <div class="row heading">
+        <img src="../../icons/icon.svg" alt="" width="28" height="28" />
+        <h1>yt-to-mp3 capture</h1>
+      </div>
+      <p class="muted">
+        The extension captures a video's audio while YouTube plays it, then sends it to your yt-to-mp3 server to be
+        converted. The server never contacts YouTube for this. <em>Original</em> saves the raw capture without any server.
+      </p>
+
+      <form id="form" class="card stack">
+        <div class="field">
+          <label for="server">Server URL</label>
+          <input id="server" class="input" type="url" placeholder="https://yt2mp3.example.home" required autocomplete="off" />
+          <span class="hint">The address you open yt-to-mp3 with.</span>
+        </div>
+        <div class="field">
+          <label for="token">Access token</label>
+          <div class="row">
+            <input id="token" class="input mono" type="password" required autocomplete="off" spellcheck="false" />
+            <button id="toggle-token" class="btn btn-ghost" type="button" aria-label="Show token">Show</button>
+          </div>
+          <span class="hint">The <span class="mono">CONVERT_TOKEN</span> set on the server. Stored only in this browser profile.</span>
+        </div>
+        <div class="row">
+          <p id="result" class="result" role="status"></p>
+          <button id="save" class="btn btn-primary push-right" type="submit">Test &amp; save</button>
+        </div>
+      </form>
+
+      <details class="disclosure">
+        <summary>How it works and its limits</summary>
+        <ul class="body">
+          <li>Audio is copied from what the YouTube player itself downloads: play the video to the end, without skipping. Seeking leaves gaps.</li>
+          <li>Nothing extra is requested from YouTube, so no IP, cookie or "not a bot" issue. It is still against YouTube's terms of service, and YouTube could detect the extension's changes to the page.</li>
+          <li>DRM-protected videos (rented or bought movies…) cannot be captured.</li>
+          <li>The capture lives in the tab's memory until you leave the video or close the tab.</li>
+        </ul>
+      </details>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

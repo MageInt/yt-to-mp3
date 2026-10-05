@@ -26,6 +26,7 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
             e2e/package-lock.json
+            extension/package-lock.json
 
       - name: Backend — install, typecheck, test, build, audit
         working-directory: backend
@@ -42,6 +43,14 @@ jobs:
           npm ci
           npm run build
           npm audit --audit-level=high
+
+      # web-ext is a dev tool only (nothing from node_modules ships in the extension); its
+      # node-forge advisory has no fixed release, so no audit gate here. See docs/extension.md.
+      - name: Extension — install, lint
+        working-directory: extension
+        run: |
+          npm ci
+          npm run lint
 
   release:
     name: Docker image & GitHub release
@@ -103,7 +112,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: e2e/package-lock.json
+          cache-dependency-path: |
+            e2e/package-lock.json
+            extension/package-lock.json
 
       - name: E2E tests (offline subset)
         working-directory: e2e
@@ -145,6 +156,12 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Build browser extension (unsigned)
+        working-directory: extension
+        run: |
+          npm ci
+          npm run build
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -155,4 +172,5 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --generate-notes \
-            --notes "Docker image: \`docker pull ${IMAGE}:${VERSION#v}\`"
+            --notes "Docker image: \`docker pull ${IMAGE}:${VERSION#v}\`. Firefox extension (unsigned, see docs/extension.md) attached." \
+            extension/dist/*.zip

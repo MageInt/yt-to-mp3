@@ -29,6 +29,8 @@ services:
       YTDLP_PROXY: ""
       # Netscape cookies.txt to get past YouTube's "not a bot" check (see docs/configuration.md)
       # YTDLP_COOKIES_FILE: /config/cookies.txt
+      # Enables /api/convert for the Firefox extension (>= 24 chars, e.g. `openssl rand -base64 32`)
+      # CONVERT_TOKEN: ""
       # Set to "true" behind a reverse proxy (Traefik, Nginx Proxy Manager…).
       TRUST_PROXY: "false"
     # volumes:

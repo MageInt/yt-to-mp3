@@ -67,6 +67,7 @@ Limits (concurrent jobs, playlist size, rate limit…) are configurable through 
 - yt-dlp + ffmpeg under the hood, best available audio quality
 - Real-time download progress bar
 - Clean dark UI, keyboard friendly (`/` to focus the link field), mobile ready
+- Firefox extension (prototype): saves the audio straight from YouTube's player and converts it on your server, see [docs/extension.md](docs/extension.md)
 - Download queue: limited parallel downloads (server-wide and per user), live queue position, cancel
 - Per-browser YouTube cookies (optional, memory only) to get past YouTube's bot check, with an in-app risk disclaimer and export guide
 - Hardened: YouTube-only URL allowlist, rate limiting, concurrency limits, security headers, non-root container
@@ -127,6 +128,7 @@ A single container runs both the React frontend (served as static files) and the
 │       └── index.css          App styles
 ├── e2e/                 Playwright tests
 │   └── tests/download.spec.ts
+├── extension/           Firefox extension (prototype)
 ├── docs/                Project documentation
 ├── .github/workflows/release.yml  CI: test, build, release image
 ├── CLAUDE.md            Guide for AI assistants
@@ -163,6 +165,7 @@ cd e2e && npm ci && npx playwright test   # or `npm run test:offline` to skip re
 - [Development](docs/development.md)
 - [Security](docs/security.md)
 - [CI & release](docs/ci-release.md)
+- [Firefox extension](docs/extension.md)
 
 ## License
 

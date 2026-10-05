@@ -20,6 +20,13 @@ export const config = {
   maxQueueSize: intFromEnv('MAX_QUEUE_SIZE', 50),
   maxQueueWaitMs: intFromEnv('MAX_QUEUE_WAIT_MINUTES', 30) * 60 * 1000,
   ytdlpPath: process.env.YTDLP_PATH?.trim() || 'yt-dlp',
+  ffmpegPath: process.env.FFMPEG_PATH?.trim() || 'ffmpeg',
+  // Conversion API used by the Firefox extension (audio captured in the browser, converted here).
+  // Disabled unless a token of at least 24 characters is set.
+  convertToken: (process.env.CONVERT_TOKEN?.trim().length ?? 0) >= 24 ? process.env.CONVERT_TOKEN!.trim() : '',
+  maxUploadBytes: intFromEnv('MAX_UPLOAD_MB', 200) * 1024 * 1024,
+  maxConcurrentConversions: intFromEnv('MAX_CONCURRENT_CONVERSIONS', 2),
+  convertTimeoutMs: intFromEnv('CONVERT_TIMEOUT_MINUTES', 5) * 60 * 1000,
   maxPlaylistItems: intFromEnv('MAX_PLAYLIST_ITEMS', 50),
   jobTtlMs: intFromEnv('JOB_TTL_MINUTES', 30) * 60 * 1000,
   downloadTimeoutMs: intFromEnv('DOWNLOAD_TIMEOUT_MINUTES', 10) * 60 * 1000,

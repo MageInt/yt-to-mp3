@@ -24,6 +24,11 @@ All settings are environment variables read in `backend/src/config.ts`. Invalid 
 | `SESSION_MAX_HOURS` | `24` | Hard limit on a session's lifetime, whatever the activity. |
 | `MAX_SESSIONS` | `1000` | Max sessions kept in memory; the oldest is dropped beyond. |
 | `COOKIE_SECURE` | `auto` | `Secure` flag on the session cookie. `auto`: when the request came over HTTPS (behind a TLS proxy this needs `TRUST_PROXY=true`). `true` / `false` force it. |
+| `CONVERT_TOKEN` | _(empty)_ | Enables `POST /api/convert` for the [Firefox extension](extension.md). Shared secret, at least 24 characters (shorter values keep the API off). Generate with `openssl rand -base64 32`. |
+| `MAX_UPLOAD_MB` | `200` | Max size of a capture sent to `/api/convert`. |
+| `MAX_CONCURRENT_CONVERSIONS` | `2` | ffmpeg conversions running at once; beyond, `429`. |
+| `CONVERT_TIMEOUT_MINUTES` | `5` | ffmpeg is killed after this. |
+| `FFMPEG_PATH` | `ffmpeg` | ffmpeg executable (tests use `backend/test/fixtures/fake-ffmpeg.mjs`). |
 | `YTDLP_PATH` | `yt-dlp` | yt-dlp executable. Only useful for tests (`backend/test/fixtures/fake-yt-dlp.mjs`). |
 | `TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so the rate limit uses the real client IP (`X-Forwarded-For`). |
 

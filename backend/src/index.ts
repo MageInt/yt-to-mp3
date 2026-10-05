@@ -3,6 +3,11 @@ import { createApp } from './app.js';
 import { checkCookiesSetup } from './services/downloadManager.js';
 
 checkCookiesSetup();
+if (process.env.CONVERT_TOKEN && !config.convertToken) {
+  console.error('[convert] CONVERT_TOKEN is shorter than 24 characters: the conversion API stays disabled');
+} else if (config.convertToken) {
+  console.log('[convert] Conversion API enabled for the browser extension');
+}
 
 const app = createApp();
 

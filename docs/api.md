@@ -103,3 +103,24 @@ Cancels a queued or running job (kills yt-dlp, frees its slot). Subscribers rece
 | 200 | `{"id": "...", "status": "failed"}` |
 | 404 | Unknown job or another session's job |
 | 409 | Job already completed or failed |
+
+## `POST /api/convert`
+Used by the [Firefox extension](extension.md): converts audio captured in the browser. **Disabled (404) unless `CONVERT_TOKEN` is set.** Authenticated with `Authorization: Bearer <CONVERT_TOKEN>`, not with the session cookie, so it accepts cross-origin calls (no CSRF exposure: the token is not sent automatically by browsers). Rate-limited like job creation.
+
+- Body: the raw capture, `Content-Type: audio/webm` (Opus) or `audio/mp4` (AAC), up to `MAX_UPLOAD_MB`.
+- Query: `format` (same ids as `/api/config`, default `mp3`), optional `title` and `artist` (written as tags and used for the filename, control characters removed, 200 chars max).
+- Response: the converted file (`Content-Disposition: attachment`).
+
+| Status | When |
+|--------|------|
+| 200 | Converted file |
+| 400 | Unknown `format`, empty body |
+| 401 | Missing or wrong token |
+| 404 | `CONVERT_TOKEN` not set |
+| 413 | Body above `MAX_UPLOAD_MB` |
+| 415 | Other content type |
+| 422 | ffmpeg could not read the capture |
+| 429 | Rate limit, or `MAX_CONCURRENT_CONVERSIONS` busy |
+
+## `GET /api/convert/ping`
+Same token. `200 {"ok":true,"formats":[{"id":"mp3","label":"MP3"},…],"maxUploadMb":200}`; used by the extension settings page to test the connection.

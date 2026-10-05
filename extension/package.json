@@ -1,0 +1,13 @@
+{
+  "name": "yt-to-mp3-extension",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "lint": "web-ext lint --self-hosted",
+    "build": "web-ext build --overwrite-dest --artifacts-dir dist",
+    "start": "web-ext run"
+  },
+  "devDependencies": {
+    "web-ext": "^10.7.0"
+  }
+}

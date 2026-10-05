@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { sameOriginOnly } from './middleware/session.js';
+import { convertRouter } from './routes/convert.js';
 import { jobsRouter } from './routes/jobs.js';
 import { sessionRouter } from './routes/session.js';
 
@@ -36,6 +37,8 @@ export function createApp() {
     res.json({ status: 'ok' });
   });
 
+  // Token-authenticated, called by the browser extension (cross-origin by design).
+  app.use('/api', convertRouter);
   app.use('/api', sameOriginOnly);
   app.use('/api', sessionRouter);
   app.use('/api', jobsRouter);

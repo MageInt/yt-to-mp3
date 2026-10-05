@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../styles/theme.css" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>yt-to-mp3 capture</title>
+  </head>
+  <body>
+    <header class="popup-header row">
+      <img src="../../icons/icon.svg" alt="" width="20" height="20" />
+      <strong>yt-to-mp3 capture</strong>
+      <button id="open-settings" class="btn btn-ghost btn-sm push-right" type="button">Settings</button>
+    </header>
+
+    <main class="stack popup-main">
+      <section id="state-permission" class="empty-state" hidden>
+        <p>The extension needs access to YouTube to capture audio.</p>
+        <button id="grant-youtube" class="btn btn-primary" type="button">Allow on YouTube</button>
+      </section>
+
+      <section id="state-not-youtube" class="empty-state" hidden>
+        <h3>Open a YouTube video</h3>
+        <p class="muted">Play a video on youtube.com or music.youtube.com: its audio is captured while it plays.</p>
+      </section>
+
+      <section id="state-waiting" class="empty-state" hidden>
+        <h3>Play the video</h3>
+        <p class="muted">Audio is captured as the player loads it. If the video was already playing when the extension was installed, reload the tab.</p>
+      </section>
+
+      <section id="state-protected" class="alert alert-danger" hidden>
+        <span class="icon" aria-hidden="true">✕</span>
+        <div>This video is DRM-protected: its audio cannot be saved.</div>
+      </section>
+
+      <section id="state-capture" class="stack" hidden>
+        <div class="card capture-card stack-sm">
+          <p id="capture-title" class="capture-title"></p>
+          <p id="capture-author" class="muted capture-author"></p>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Captured">
+            <span id="capture-bar"></span>
+          </div>
+          <div class="row capture-meta">
+            <span id="capture-time" class="mono num"></span>
+            <span id="capture-size" class="mono num muted"></span>
+            <span id="capture-badge" class="badge push-right"></span>
+          </div>
+          <p id="capture-hint" class="hint"></p>
+        </div>
+
+        <div class="field">
+          <span class="field-label" id="format-label">Format</span>
+          <div id="format-picker" class="segmented format-picker" role="radiogroup" aria-labelledby="format-label"></div>
+          <p id="format-hint" class="hint"></p>
+        </div>
+
+        <button id="action" class="btn btn-primary btn-block" type="button"></button>
+        <p id="result" class="result" role="status" hidden></p>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

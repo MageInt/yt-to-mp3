@@ -19,6 +19,10 @@ export const AUDIO_FORMATS: readonly AudioFormat[] = [
 
 export const DEFAULT_FORMAT = 'mp3';
 
+export function getAudioFormatStrict(id: unknown): AudioFormat | undefined {
+  return AUDIO_FORMATS.find(f => f.id === id);
+}
+
 export function getAudioFormat(id: unknown): AudioFormat | undefined {
   if (id === undefined || id === null || id === '') {
     return AUDIO_FORMATS.find(f => f.id === DEFAULT_FORMAT);
