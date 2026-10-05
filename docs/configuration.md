@@ -33,7 +33,7 @@ Point `YTDLP_PROXY` at the HTTP proxy of a Gluetun container (`HTTPPROXY=on`) us
 YouTube shows this check to IPs it distrusts: VPN exits (Gluetun/NordVPN…), datacenters, servers that download a lot. The UI then reports *YouTube is asking to confirm this is not a bot*. Options, from simplest:
 
 1. **Change the exit IP**: try another VPN country/server (or no proxy) to confirm the IP is the cause.
-2. **Each user uploads their own cookies** in the UI (*YouTube cookies* section, opened automatically after a bot-check failure). They live in the user's session, in memory only, see [security.md](security.md#user-cookies). The UI explains the risks and how to export them; the steps are the same as below.
+2. **Each user uploads their own cookies** in the UI (*YouTube cookies* section, opened automatically after a bot-check failure). They live in the user's session, in memory only, see [security.md](security.md#user-cookies). The UI explains the risks and how to export them; the export steps are the same as below. The user must then **upload from a normal window of the same browser**, not from the private window: closing the private window would also end their yt-to-mp3 session, leaving the cookies unusable until the session expires. Private mode does not change the User-Agent, so the UA paired at upload still matches the browser the cookies come from.
 3. **Or set server-wide fallback cookies** (used when a user has none):
    1. Use a **secondary Google account**: automated use can get an account flagged.
    2. In a **private browsing window**, log in to YouTube, then open `https://www.youtube.com/robots.txt` in the same tab.

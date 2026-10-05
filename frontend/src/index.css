@@ -139,6 +139,8 @@ details.disclosure.nested { background: var(--surface-2); }
 details.disclosure.nested > summary { font-size: var(--text-sm); padding: var(--space-2) var(--space-3); }
 details.disclosure.nested > .body { padding: 0 var(--space-3) var(--space-3) var(--space-7); font-size: var(--text-sm); color: var(--text-muted); }
 details.disclosure.nested > p.body { padding-left: var(--space-3); margin: 0; }
+details.disclosure.nested > p.body + p.body { margin-top: var(--space-2); }
+details.disclosure.nested > .body.hint-warning { color: var(--warning); }
 .cookies-status { flex-wrap: wrap; gap: var(--space-3); font-size: var(--text-sm); }
 .cookies-textarea { min-height: 120px; font-size: var(--text-xs); white-space: pre; }
 .file-input { font: inherit; font-size: var(--text-sm); color: var(--text-muted); max-width: 100%; }

@@ -169,10 +169,14 @@ const CookiesPanel = forwardRef<HTMLDetailsElement, Props>(function CookiesPanel
               export stops working.
             </li>
             <li>
-              Upload the file below <strong>from the same browser</strong> you exported it with: its User-Agent is paired
-              with the cookies.
+              Back in a <strong>normal window of the same browser</strong>, open this page and upload the file below.
+              Its User-Agent is paired with the cookies, and private mode does not change it.
             </li>
           </ol>
+          <p className="body hint-warning">
+            Do not upload from the private window: closing it also ends your session here, and the cookies would no
+            longer be usable.
+          </p>
           <p className="body muted">
             Details:{' '}
             <a href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies" target="_blank" rel="noreferrer noopener">
