@@ -108,8 +108,8 @@ Cancels a queued or running job (kills yt-dlp, frees its slot). Subscribers rece
 Used by the [Firefox extension](extension.md): converts audio captured in the browser. **Disabled (404) unless `CONVERT_TOKEN` is set.** Authenticated with `Authorization: Bearer <CONVERT_TOKEN>`, not with the session cookie, so it accepts cross-origin calls (no CSRF exposure: the token is not sent automatically by browsers). Rate-limited like job creation.
 
 - Body: the raw capture, `Content-Type: audio/webm` (Opus) or `audio/mp4` (AAC), up to `MAX_UPLOAD_MB`.
-- Query: `format` (same ids as `/api/config`, default `mp3`), optional `title` and `artist` (written as tags and used for the filename, control characters removed, 200 chars max).
-- Response: the converted file (`Content-Disposition: attachment`).
+- Query: `format` (same ids as `/api/config`, default `mp3`, or `original`: same codec remuxed without re-encoding, `.webm` / `.m4a`), optional `title` and `artist` (written as tags and used for the filename, control characters removed, 200 chars max), optional `delivery=link`.
+- Response: the converted file (`Content-Disposition: attachment`), or with `delivery=link`: `{"url":"api/convert/files/<id>","filename":"Title.mp3","expiresAt":<ms>}`. The extension uses `delivery=link` so the browser's download manager fetches the file (Chromium service workers cannot download a local blob).
 
 | Status | When |
 |--------|------|
@@ -121,6 +121,9 @@ Used by the [Firefox extension](extension.md): converts audio captured in the br
 | 415 | Other content type |
 | 422 | ffmpeg could not read the capture |
 | 429 | Rate limit, or `MAX_CONCURRENT_CONVERSIONS` busy |
+
+## `GET /api/convert/files/:id`
+Downloads a result stored by `delivery=link`. **No token** (the browser's download manager cannot send one): the id is a 256-bit random capability, valid 10 minutes (reusable within that time), at most 20 results kept. `404` once expired.
 
 ## `GET /api/convert/ping`
 Same token. `200 {"ok":true,"formats":[{"id":"mp3","label":"MP3"},…],"maxUploadMb":200}`; used by the extension settings page to test the connection.

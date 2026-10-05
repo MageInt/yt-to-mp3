@@ -21,6 +21,7 @@ Public-facing web app with no authentication that runs an external downloader on
 | Leaking YouTube session cookies | See [User cookies](#user-cookies) | `sessionStore.ts`, `cookieJar.ts`, `downloadManager.ts` |
 | Header injection via forwarded User-Agent | Only printable ASCII, `Mozilla/5.0 (…` prefix, ≤ 512 chars; passed as a `spawn` argument (no shell) | `services/userAgent.ts` |
 | Conversion API abuse | Off unless `CONVERT_TOKEN` (≥ 24 chars) is set; bearer token compared in constant time; rate limit, `MAX_UPLOAD_MB`, `MAX_CONCURRENT_CONVERSIONS` | `routes/convert.ts` |
+| Leaked download link (`delivery=link`) | 256-bit random id, 10 min lifetime, max 20 stored results, deleted on expiry | `services/convertResults.ts` |
 | Malicious file sent to ffmpeg | Content type allowlist (webm/mp4), explicit demuxer, `-protocol_whitelist file`, audio stream only, metadata stripped (`-map_metadata -1`), timeout, temp dir deleted after the response | `services/converter.ts` |
 | Accessing someone else's files | Jobs bound to the creating session; other callers get `404` | `routes/jobs.ts` |
 | CSRF on state-changing routes | `SameSite=Strict` session cookie, JSON-only bodies, `Sec-Fetch-Site` / `Origin` check | `middleware/session.ts` |

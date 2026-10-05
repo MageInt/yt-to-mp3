@@ -22,6 +22,7 @@ Browser ──HTTP──▶ Express (backend/src/app.ts)
 | `backend/src/services/urlValidator.ts` | YouTube host allowlist (SSRF protection), video / playlist detection. |
 | `backend/src/middleware/session.ts` | Session cookie handling (`yt2mp3_sid`), `requireSession`, same-origin check for state-changing requests (CSRF). |
 | `backend/src/routes/convert.ts` | `/api/convert` for the browser extension (bearer token, mounted before the same-origin check). |
+| `backend/src/services/convertResults.ts` | Converted files kept 10 min behind a capability URL (`delivery=link`). |
 | `backend/src/services/converter.ts` | ffmpeg conversion of uploaded captures (fixed demuxer, `file` protocol only, timeout, concurrency cap). |
 | `backend/src/routes/session.ts` | `/api/session` and `/api/session/cookies`. |
 | `backend/src/services/sessionStore.ts` | In-memory sessions (idle / max lifetime, eviction) holding uploaded cookies. |
@@ -65,4 +66,4 @@ Multi-stage `Dockerfile`: frontend build → backend build → runtime on `node:
 
 ## Browser extension
 
-`extension/` (Firefox, MV3) captures audio in the user's browser from YouTube's own player and posts it to `/api/convert`; the server only runs ffmpeg. Independent from the yt-dlp flow above. Details: [extension.md](extension.md).
+`extension/` (Firefox and Chromium/Brave, MV3, one codebase) captures audio in the user's browser from YouTube's own player and posts it to `/api/convert`; the server only runs ffmpeg. Independent from the yt-dlp flow above. Details: [extension.md](extension.md).

@@ -1,5 +1,7 @@
 'use strict';
 
+const api = globalThis.browser ?? globalThis.chrome;
+
 const $ = (id) => document.getElementById(id);
 
 function originPattern(url) {
@@ -13,7 +15,7 @@ function setResult(text, ok) {
 }
 
 async function init() {
-  const { serverUrl = '', token = '' } = await browser.storage.local.get(['serverUrl', 'token']);
+  const { serverUrl = '', token = '' } = await api.storage.local.get(['serverUrl', 'token']);
   $('server').value = serverUrl;
   $('token').value = token;
 
@@ -37,7 +39,7 @@ async function init() {
     const token = $('token').value.trim();
 
     // The background script needs host access to call the server without CORS restrictions.
-    const granted = await browser.permissions.request({ origins: [originPattern(serverUrl)] });
+    const granted = await api.permissions.request({ origins: [originPattern(serverUrl)] });
     if (!granted) {
       setResult('Access to the server was not granted.', false);
       return;
@@ -45,13 +47,13 @@ async function init() {
 
     $('save').disabled = true;
     setResult('Testing…', true);
-    const answer = await browser.runtime.sendMessage({ cmd: 'ping', serverUrl, token });
+    const answer = await api.runtime.sendMessage({ cmd: 'ping', serverUrl, token });
     $('save').disabled = false;
     if (!answer?.ok) {
       setResult(answer?.error ?? 'The server did not answer.', false);
       return;
     }
-    await browser.storage.local.set({ serverUrl, token });
+    await api.storage.local.set({ serverUrl, token });
     setResult(`✓ Connected. Uploads up to ${answer.maxUploadMb} MB.`, true);
   });
 }

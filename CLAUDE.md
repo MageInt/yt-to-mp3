@@ -10,7 +10,7 @@ yt-to-mp3: paste a YouTube link, get an MP3. One container: Express 5 backend (A
 - [docs/development.md](docs/development.md): local dev, tests, e2e, dependency updates
 - [docs/security.md](docs/security.md): threat model, mitigations, audit log
 - [docs/ci-release.md](docs/ci-release.md): GitHub Actions workflow, versioning, GHCR tags
-- [docs/extension.md](docs/extension.md): Firefox extension (capture in the player, conversion via `/api/convert`)
+- [docs/extension.md](docs/extension.md): browser extension for Firefox and Brave/Chromium (capture in the player, conversion via `/api/convert`)
 
 ## Layout
 
@@ -23,13 +23,14 @@ backend/src/services/               downloadManager (queue, yt-dlp, SSE, cleanup
                                     video/playlist detection), audioFormats (output formats),
                                     sessionStore (in-memory sessions), cookieJar (cookies.txt parser),
                                     userAgent (UA paired with cookies at upload, forwarded to yt-dlp),
-                                    converter (ffmpeg for /api/convert)
+                                    converter (ffmpeg for /api/convert), convertResults (10 min download links)
 backend/test/                       node:test unit + HTTP tests + yt-dlp args + queue (fixtures/fake-yt-dlp.mjs)
 frontend/src/                       App.tsx + components (DownloadForm, ProgressBar, TrackList, CookiesPanel), api.ts
 frontend/src/styles/theme.css       Dorian UI tokens (dark only) + fonts/; app styles in src/index.css
 e2e/tests/                          Playwright (tag @network = real YouTube download)
-e2e/tools/extension-capture.mjs     manual check of the extension hook on real YouTube (not CI)
-extension/                          Firefox MV3 extension: src/inject.js (MAIN world hook), content.js, background.js, popup/, options/
+e2e/tools/extension-*.mjs           manual checks on real YouTube (not CI): hook only, full Chromium build
+extension/                          MV3 extension, shared src/ (inject.js MAIN-world hook, content.js, background.js,
+                                    popup/, options/), manifests/{firefox,chromium}.json, scripts/build.mjs → dist/<target>
 Dockerfile, docker-compose.yml      Node 24 alpine, non-root, healthcheck
 .github/workflows/release.yml       test → image → e2e → push GHCR → GitHub release (push on main only)
 ```
@@ -41,7 +42,7 @@ cd backend && npm ci && npm run typecheck && npm test && npm run build
 cd frontend && npm ci && npm run build
 docker compose up --build                     # app on :8080
 cd e2e && npm ci && npm run test:offline      # container must be running; `npm test` includes @network
-cd extension && npm ci && npm run lint        # web-ext lint
+cd extension && npm ci && npm run lint        # web-ext lint (Firefox build); npm run package → both zips
 ```
 
 On this machine VS Code runs as a Flatpak without node or docker: prefix with `flatpak-spawn --host` and use Podman containers, e.g.
@@ -53,7 +54,7 @@ and `podman build --format docker` (otherwise the HEALTHCHECK is dropped).
 - UI follows the Dorian UI charter (load the `dorian-ui` skill before UI work): tokens only, no hardcoded colors.
 - Playlists are disabled by default (`ENABLE_PLAYLISTS`); keep the playlist code paths working.
 - Downloads go through the queue in `downloadManager.ts` (`pump()`); never spawn yt-dlp outside it. Keep `MAX_PARALLEL_PER_SESSION` semantics: one account's cookies are not used in parallel.
-- Extension: nothing must be added to YouTube's page beyond the prototype hooks (no globals, no DOM); keep DRM content refused.
+- Extension: nothing must be added to YouTube's page beyond the prototype hooks (no globals, no DOM); keep DRM content refused. Keep the code valid for both browsers: `const api = globalThis.browser ?? globalThis.chrome`, `sendResponse` + `return true` in listeners, JSON-only messages (binary goes in base64 chunks).
 - User cookies are secrets: memory only, never logged, never returned by the API, written only to `SECRETS_TMP_DIR` while yt-dlp runs. Jobs must stay bound to their session. Read `docs/security.md#user-cookies` before touching sessions or cookies.
 - TypeScript strict, ESM (`.js` suffix in backend relative imports), 2-space indent, single quotes.
 - Every new env variable goes through `backend/src/config.ts`.

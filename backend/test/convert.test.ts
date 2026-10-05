@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../src/config.js';
 import { createApp } from '../src/app.js';
 import { getAudioFormat } from '../src/services/audioFormats.js';
-import { buildFfmpegArgs, cleanMetadata, safeFilename } from '../src/services/converter.js';
+import { buildFfmpegArgs, cleanMetadata, originalFormat, safeFilename } from '../src/services/converter.js';
+import { RESULT_TTL_MS, sweepResults } from '../src/services/convertResults.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN = 'test-token-0123456789-abcdefghij';
@@ -115,4 +116,37 @@ test('metadata and filenames are sanitized', () => {
   assert.equal(safeFilename('../../etc/passwd', 'mp3'), '_.._etc_passwd.mp3');
   assert.equal(safeFilename(undefined, 'flac'), 'audio.flac');
   assert.equal(safeFilename('a:b*c?"d<e>f|g', 'wav'), 'a_b_c__d_e_f_g.wav');
+});
+
+test('original keeps the codec: remux only, extension from the input', async () => {
+  const res = await convert('format=original&title=Raw', { type: 'audio/mp4' });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-disposition') ?? '', /filename="Raw\.m4a"/);
+  const args = buildFfmpegArgs('/t/in.webm', 'webm', originalFormat('webm'), '/t/out.webm', {});
+  assert.equal(args[args.indexOf('-c:a') + 1], 'copy');
+  assert.equal(originalFormat('webm').ext, 'webm');
+});
+
+test('delivery=link stores the result behind an unguessable URL that needs no token', async () => {
+  const res = await convert('format=mp3&title=Linked&delivery=link');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.filename, 'Linked.mp3');
+  assert.match(body.url, /^api\/convert\/files\/[A-Za-z0-9_-]{43}$/);
+  assert.ok(body.expiresAt > Date.now());
+
+  const file = await fetch(`${baseUrl}/${body.url}`);
+  assert.equal(file.status, 200);
+  assert.match(file.headers.get('content-disposition') ?? '', /Linked\.mp3/);
+  assert.deepEqual(Buffer.from(await file.arrayBuffer()), AUDIO);
+  // Reusable until it expires (download managers may fetch twice).
+  assert.equal((await fetch(`${baseUrl}/${body.url}`)).status, 200);
+
+  assert.equal((await fetch(`${baseUrl}/api/convert/files/not-a-real-id`)).status, 404);
+});
+
+test('stored results expire', async () => {
+  const body = await (await convert('format=mp3&delivery=link')).json();
+  sweepResults(Date.now() + RESULT_TTL_MS + 1);
+  assert.equal((await fetch(`${baseUrl}/${body.url}`)).status, 404);
 });

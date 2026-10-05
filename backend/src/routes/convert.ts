@@ -9,8 +9,10 @@ import {
   ConverterBusyError,
   convertAudio,
   INPUT_TYPES,
+  originalFormat,
   safeFilename,
 } from '../services/converter.js';
+import { getResult, storeResult } from '../services/convertResults.js';
 
 // Conversion API for the Firefox extension. Authenticated by a shared bearer token (CONVERT_TOKEN):
 // the session cookie is SameSite=Strict and never sent by an extension. Not an ambient credential,
@@ -44,6 +46,18 @@ function requireToken(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Download of a converted file by its capability URL (delivery=link). No token: the browser's
+// download manager fetches it and cannot add headers. Registered before the token middleware.
+convertRouter.get('/convert/files/:id', limiter, (req, res) => {
+  const result = getResult((req.params as { id: string }).id);
+  if (!result) {
+    res.status(404).json({ error: 'File expired or not found' });
+    return;
+  }
+  res.set('Cache-Control', 'no-store');
+  res.download(result.path, result.filename);
+});
+
 convertRouter.use('/convert', limiter, requireToken, (_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
@@ -67,7 +81,7 @@ convertRouter.post(
       res.status(415).json({ error: 'Send audio/webm or audio/mp4' });
       return;
     }
-    const format = getAudioFormatStrict(req.query.format ?? 'mp3');
+    const format = req.query.format === 'original' ? originalFormat(input) : getAudioFormatStrict(req.query.format ?? 'mp3');
     if (!format) {
       res.status(400).json({ error: 'Unsupported audio format' });
       return;
@@ -80,7 +94,13 @@ convertRouter.post(
     const metadata = { title: cleanMetadata(req.query.title), artist: cleanMetadata(req.query.artist) };
     try {
       const { outputPath, cleanup } = await convertAudio(req.body, input, format, metadata);
-      res.download(outputPath, safeFilename(metadata.title, format.ext), (err) => {
+      const filename = safeFilename(metadata.title, format.ext);
+      if (req.query.delivery === 'link') {
+        const { id, expiresAt } = storeResult(outputPath, filename, cleanup);
+        res.json({ url: `api/convert/files/${id}`, filename, expiresAt });
+        return;
+      }
+      res.download(outputPath, filename, (err) => {
         cleanup();
         if (err && !res.headersSent) res.status(500).json({ error: 'Could not send the file' });
       });

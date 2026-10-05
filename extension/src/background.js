@@ -1,15 +1,13 @@
-// Sends captured audio to the yt-to-mp3 server for conversion (or saves it as is) and downloads the result.
+// Pulls a capture from the YouTube tab, sends it to the yt-to-mp3 server for conversion and lets the
+// browser download the result from the server. Same code for Firefox (event page) and Chromium
+// (service worker, which cannot create blob URLs for downloads: the server serves the file instead).
 'use strict';
 
+const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULTS = { serverUrl: '', token: '', format: 'mp3' };
 
 async function settings() {
-  return { ...DEFAULTS, ...(await browser.storage.local.get(Object.keys(DEFAULTS))) };
-}
-
-function safeName(title, ext) {
-  const base = String(title || 'audio').replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '_').replace(/^\.+/, '').trim().slice(0, 150);
-  return `${base || 'audio'}.${ext}`;
+  return { ...DEFAULTS, ...(await api.storage.local.get(Object.keys(DEFAULTS))) };
 }
 
 function serverEndpoint(serverUrl, pathAndQuery) {
@@ -22,45 +20,53 @@ async function readError(res) {
   return data.error || `Server answered HTTP ${res.status}`;
 }
 
-async function download(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  try {
-    await browser.downloads.download({ url, filename, saveAs: false });
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  }
+function fromBase64(text) {
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 function badge(text, color) {
-  browser.action.setBadgeText({ text });
-  if (color) browser.action.setBadgeBackgroundColor({ color });
+  api.action.setBadgeText({ text });
+  if (color) api.action.setBadgeBackgroundColor({ color });
 }
 
-async function processCapture({ mode, format, status, buffer }) {
-  const blob = new Blob([buffer], { type: status.mime });
-
-  if (mode === 'original') {
-    const filename = safeName(status.title, status.ext);
-    await download(blob, filename);
-    return { ok: true, filename };
+async function pullCapture(tabId, meta) {
+  const parts = [];
+  const count = Math.ceil(meta.size / meta.chunkSize);
+  try {
+    for (let index = 0; index < count; index++) {
+      const answer = await api.tabs.sendMessage(tabId, { cmd: 'chunk', transferId: meta.transferId, index });
+      if (!answer?.ok) throw new Error(answer?.error ?? 'Transfer from the tab failed.');
+      parts.push(fromBase64(answer.data));
+    }
+  } finally {
+    api.tabs.sendMessage(tabId, { cmd: 'release', transferId: meta.transferId }).catch(() => {});
   }
+  return new Blob(parts, { type: meta.status.mime });
+}
 
+async function processTab(tabId, format) {
   const { serverUrl, token } = await settings();
   if (!serverUrl || !token) return { ok: false, error: 'Set the server URL and token in the extension settings.' };
 
-  const query = new URLSearchParams({ format, title: status.title ?? '' });
-  if (status.author) query.set('artist', status.author);
+  const meta = await api.tabs.sendMessage(tabId, { cmd: 'export' });
+  if (!meta?.ok) return { ok: false, error: meta?.error ?? 'The YouTube tab did not answer. Reload it.' };
+  const blob = await pullCapture(tabId, meta);
+
+  const query = new URLSearchParams({ format, title: meta.status.title ?? '', delivery: 'link' });
+  if (meta.status.author) query.set('artist', meta.status.author);
   const res = await fetch(serverEndpoint(serverUrl, `api/convert?${query}`), {
     method: 'POST',
-    headers: { 'Content-Type': status.mime, Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': meta.status.mime, Authorization: `Bearer ${token}` },
     body: blob,
     credentials: 'omit',
   });
   if (!res.ok) return { ok: false, error: await readError(res) };
 
-  const extension = { ogg: 'ogg', opus: 'opus', m4a: 'm4a', flac: 'flac', wav: 'wav' }[format] ?? 'mp3';
-  const filename = safeName(status.title, extension);
-  await download(await res.blob(), filename);
+  const { url, filename } = await res.json();
+  await api.downloads.download({ url: serverEndpoint(serverUrl, url), filename, saveAs: false });
   return { ok: true, filename };
 }
 
@@ -69,30 +75,39 @@ async function ping(serverUrl, token) {
     headers: { Authorization: `Bearer ${token}` },
     credentials: 'omit',
   });
-  if (!res.ok) return { ok: false, error: res.status === 404 ? 'Conversion API disabled on this server (CONVERT_TOKEN not set).' : await readError(res) };
+  if (!res.ok) {
+    return { ok: false, error: res.status === 404 ? 'Conversion API disabled on this server (CONVERT_TOKEN not set).' : await readError(res) };
+  }
   return { ok: true, ...(await res.json()) };
 }
 
-browser.runtime.onMessage.addListener(async (message) => {
-  if (message?.cmd === 'process') {
+const handlers = {
+  async process({ tabId, format }) {
     badge('…', '#3563e9');
     try {
-      const result = await processCapture(message);
+      const result = await processTab(tabId, format);
       badge(result.ok ? '✓' : '!', result.ok ? '#22c55e' : '#dc2626');
       return result;
     } catch (err) {
       badge('!', '#dc2626');
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      throw err;
     } finally {
       setTimeout(() => badge(''), 8000);
     }
-  }
-  if (message?.cmd === 'ping') {
+  },
+
+  async ping({ serverUrl, token }) {
     try {
-      return await ping(message.serverUrl, message.token);
+      return await ping(serverUrl, token);
     } catch (err) {
       return { ok: false, error: `Cannot reach the server: ${err instanceof Error ? err.message : err}` };
     }
-  }
-  return undefined;
+  },
+};
+
+api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const handler = handlers[message?.cmd];
+  if (!handler) return false;
+  handler(message).then(sendResponse, (err) => sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+  return true;
 });

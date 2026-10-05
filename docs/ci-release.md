@@ -7,13 +7,13 @@ Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml). T
 1. **`test`**: on Node from `.nvmrc`:
    - backend: `npm ci`, typecheck, unit tests, build, `npm audit --audit-level=high`;
    - frontend: `npm ci`, build, audit.
-   - extension: `npm ci`, `web-ext lint` (no audit gate, see [extension.md](extension.md#testing)).
+   - extension: `npm ci`, `web-ext lint` of the Firefox build (no audit gate, see [extension.md](extension.md#testing)).
 2. **`release`** (after `test`):
    1. compute the next version from git tags;
    2. build the image (`load: true`), start it, wait for `/api/health`;
    3. run Playwright `npm run test:offline` (tests tagged `@network` are skipped: YouTube often blocks CI IPs);
    4. push to GHCR with provenance + SBOM;
-   5. build the Firefox extension zip (unsigned) and create the git tag and the GitHub Release (auto-generated notes, `docker pull` command, extension zip attached).
+   5. package the extensions (`yt-to-mp3-capture-firefox-*.zip`, `yt-to-mp3-capture-chromium-*.zip`, unsigned) and create the git tag and the GitHub Release (auto-generated notes, `docker pull` command, both zips attached).
 
 If any step fails, nothing is pushed or released.
 

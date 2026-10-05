@@ -156,11 +156,11 @@ jobs:
           provenance: true
           sbom: true
 
-      - name: Build browser extension (unsigned)
+      - name: Package browser extensions (Firefox + Chromium/Brave, unsigned)
         working-directory: extension
         run: |
           npm ci
-          npm run build
+          npm run package
 
       - name: Create GitHub release
         env:
@@ -172,5 +172,5 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --generate-notes \
-            --notes "Docker image: \`docker pull ${IMAGE}:${VERSION#v}\`. Firefox extension (unsigned, see docs/extension.md) attached." \
-            extension/dist/*.zip
+            --notes "Docker image: \`docker pull ${IMAGE}:${VERSION#v}\`. Browser extensions for Firefox and Chromium/Brave (unsigned, see docs/extension.md) attached." \
+            extension/dist/packages/*.zip

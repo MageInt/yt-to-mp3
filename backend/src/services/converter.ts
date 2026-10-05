@@ -38,8 +38,16 @@ export function safeFilename(title: string | undefined, ext: string): string {
   return `${base || 'audio'}.${ext}`;
 }
 
+// Pseudo-format for the extension's "Original": same codec and container family, just remuxed
+// (clean timestamps, proper headers), no re-encoding.
+export function originalFormat(input: InputKind): AudioFormat {
+  return { id: 'original', label: 'Original', description: 'Remuxed capture', ytdlp: '', ext: input === 'mp4' ? 'm4a' : 'webm' };
+}
+
 function codecArgs(format: AudioFormat, input: InputKind): string[] {
   switch (format.id) {
+    case 'original':
+      return input === 'mp4' ? ['-c:a', 'copy', '-movflags', '+faststart'] : ['-c:a', 'copy'];
     case 'mp3':
       return ['-c:a', 'libmp3lame', '-q:a', '0'];
     case 'm4a':

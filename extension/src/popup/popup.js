@@ -1,5 +1,7 @@
 'use strict';
 
+const api = globalThis.browser ?? globalThis.chrome;
+
 const FORMATS = [
   { id: 'mp3', label: 'MP3', hint: 'Converted on your server, plays everywhere' },
   { id: 'm4a', label: 'M4A', hint: 'AAC, converted on your server' },
@@ -7,7 +9,7 @@ const FORMATS = [
   { id: 'ogg', label: 'OGG', hint: 'Vorbis, converted on your server' },
   { id: 'flac', label: 'FLAC', hint: 'Lossless container, larger files' },
   { id: 'wav', label: 'WAV', hint: 'Uncompressed, for editing' },
-  { id: 'original', label: 'Original', hint: 'Raw capture (.webm / .m4a), no server needed' },
+  { id: 'original', label: 'Original', hint: 'Same audio, no re-encoding (.webm / .m4a), cleaned up by your server' },
 ];
 const YOUTUBE_ORIGINS = ['*://www.youtube.com/*', '*://music.youtube.com/*', '*://m.youtube.com/*'];
 
@@ -48,7 +50,7 @@ function renderFormats() {
       button.disabled = busy;
       button.addEventListener('click', () => {
         format = f.id;
-        browser.storage.local.set({ format });
+        api.storage.local.set({ format });
         renderFormats();
         renderAction();
       });
@@ -97,7 +99,7 @@ function renderStatus(status) {
 async function refresh() {
   if (busy || tabId === null) return;
   try {
-    renderStatus(await browser.tabs.sendMessage(tabId, { cmd: 'status' }));
+    renderStatus(await api.tabs.sendMessage(tabId, { cmd: 'status' }));
   } catch {
     show('state-waiting');
   }
@@ -110,7 +112,8 @@ async function run() {
   const result = $('result');
   result.hidden = true;
   try {
-    const answer = await browser.tabs.sendMessage(tabId, { cmd: 'export', mode: format === 'original' ? 'original' : 'convert', format });
+    // Runs in the background script, so it finishes even if the popup closes.
+    const answer = await api.runtime.sendMessage({ cmd: 'process', tabId, format });
     result.className = `result ${answer?.ok ? 'ok' : 'error'}`;
     result.textContent = answer?.ok ? `✓ Saved ${answer.filename}` : answer?.error ?? 'Something went wrong.';
   } catch (err) {
@@ -125,24 +128,24 @@ async function run() {
 }
 
 async function init() {
-  $('open-settings').addEventListener('click', () => browser.runtime.openOptionsPage());
+  $('open-settings').addEventListener('click', () => api.runtime.openOptionsPage());
   $('action').addEventListener('click', run);
   $('grant-youtube').addEventListener('click', async () => {
-    if (await browser.permissions.request({ origins: YOUTUBE_ORIGINS })) {
+    if (await api.permissions.request({ origins: YOUTUBE_ORIGINS })) {
       $('state-permission').hidden = true;
       show('state-waiting');
     }
   });
 
-  format = (await browser.storage.local.get('format')).format ?? 'mp3';
+  format = (await api.storage.local.get('format')).format ?? 'mp3';
   renderFormats();
 
-  if (!(await browser.permissions.contains({ origins: YOUTUBE_ORIGINS }))) {
+  if (!(await api.permissions.contains({ origins: YOUTUBE_ORIGINS }))) {
     show('state-permission');
     return;
   }
 
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   if (!tab?.url || !/^https:\/\/(www|music|m)\.youtube\.com\//.test(tab.url)) {
     show('state-not-youtube');
     return;

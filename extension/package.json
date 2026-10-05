@@ -2,10 +2,12 @@
   "name": "yt-to-mp3-extension",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "lint": "web-ext lint --self-hosted",
-    "build": "web-ext build --overwrite-dest --artifacts-dir dist",
-    "start": "web-ext run"
+    "build": "node scripts/build.mjs",
+    "lint": "node scripts/build.mjs firefox && web-ext lint --self-hosted --source-dir dist/firefox",
+    "package": "node scripts/build.mjs && web-ext build --overwrite-dest --source-dir dist/firefox --artifacts-dir dist/packages --filename yt-to-mp3-capture-firefox-{version}.zip && web-ext build --overwrite-dest --source-dir dist/chromium --artifacts-dir dist/packages --filename yt-to-mp3-capture-chromium-{version}.zip",
+    "start:firefox": "node scripts/build.mjs firefox && web-ext run --source-dir dist/firefox"
   },
   "devDependencies": {
     "web-ext": "^10.7.0"
