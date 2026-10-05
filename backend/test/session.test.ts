@@ -138,6 +138,14 @@ test('jobs are only visible to the session that created them', async () => {
 
   const mine = await fetch(`${baseUrl}/api/jobs/${id}/file`, { headers: { Cookie: owner } });
   assert.notEqual(mine.status, 404);
+
+  // Progress stream: unbuffered behind Nginx, then closed by the client.
+  const controller = new AbortController();
+  const stream = await fetch(`${baseUrl}/api/jobs/${id}/progress`, { headers: { Cookie: owner }, signal: controller.signal });
+  assert.equal(stream.status, 200);
+  assert.equal(stream.headers.get('content-type'), 'text/event-stream');
+  assert.equal(stream.headers.get('x-accel-buffering'), 'no');
+  controller.abort();
 });
 
 test('automation UA at upload is not captured', async () => {

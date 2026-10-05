@@ -9,6 +9,8 @@ import { sanitizeUserAgent } from '../services/userAgent.js';
 
 export const jobsRouter = Router();
 
+export const SSE_HEARTBEAT_MS = 20_000;
+
 const createJobLimiter = rateLimit({
   windowMs: config.rateLimitWindowMs,
   limit: config.rateLimitMax,
@@ -79,13 +81,20 @@ jobsRouter.get('/jobs/:id/progress', session({ create: false }), (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
+    // Nginx (and Nginx Proxy Manager) buffer responses by default: progress would arrive in one block.
+    'X-Accel-Buffering': 'no',
   });
 
   const unsubscribe = subscribe(id, (data) => {
     res.write(`data: ${data}\n\n`);
   });
 
+  // SSE comment line: keeps reverse proxies (60 s read timeout by default) from closing the stream
+  // while a job waits in the queue or ffmpeg converts, when no event is sent.
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), SSE_HEARTBEAT_MS);
+
   req.on('close', () => {
+    clearInterval(heartbeat);
     unsubscribe();
   });
 });
