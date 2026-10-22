@@ -62,7 +62,7 @@ In dev, Vite proxies `/api` to `localhost:3001`.
 
 ## Container
 
-Multi-stage `Dockerfile`: frontend build → backend build → runtime on `node:24-alpine` with `ffmpeg`, `python3` and `yt-dlp[default]` installed from PyPI in a venv (`/opt/yt-dlp`). `/etc/yt-dlp.conf` sets `--js-runtimes node` so yt-dlp can solve YouTube JS challenges with the bundled Node. Runs as user `node`, with a `HEALTHCHECK` on `/api/health`.
+Multi-stage `Dockerfile`: frontend build → backend build → runtime on `node:24.22.1-alpine` with `ffmpeg`, `python3` and `yt-dlp[default]` installed from PyPI in a venv (`/opt/yt-dlp`). `/etc/yt-dlp.conf` sets `--js-runtimes node` so yt-dlp can solve YouTube JS challenges with the bundled Node. Runs as user `node`, with a `HEALTHCHECK` on `/api/health`.
 
 ## Browser extension
 

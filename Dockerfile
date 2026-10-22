@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine AS frontend-builder
+FROM node:24.22.1-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-fund --no-audit
 COPY frontend/ ./
 RUN npm run build
 
-FROM node:24-alpine AS backend-builder
+FROM node:24.22.1-alpine AS backend-builder
 WORKDIR /app/backend
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --no-fund --no-audit
@@ -15,7 +15,7 @@ COPY backend/tsconfig.json ./
 COPY backend/src ./src
 RUN npm run build
 
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 
 LABEL org.opencontainers.image.title="yt-to-mp3" \
       org.opencontainers.image.description="Paste a YouTube link, get an MP3." \

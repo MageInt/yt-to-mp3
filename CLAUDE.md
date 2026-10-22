@@ -46,7 +46,7 @@ cd extension && npm ci && npm run lint        # web-ext lint (Firefox build); np
 ```
 
 On this machine VS Code runs as a Flatpak without node or docker: prefix with `flatpak-spawn --host` and use Podman containers, e.g.
-`flatpak-spawn --host podman run --rm -v "$PWD/backend":/w:Z -w /w node:24-alpine sh -c "npm ci && npm test"`
+`flatpak-spawn --host podman run --rm -v "$PWD/backend":/w:Z -w /w node:24.22.1-alpine sh -c "npm ci && npm test"`
 and `podman build --format docker` (otherwise the HEALTHCHECK is dropped).
 
 ## Conventions

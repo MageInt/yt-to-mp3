@@ -1,6 +1,6 @@
 # Development
 
-Requirements: Node.js 24 (see `.nvmrc`), and `yt-dlp` + `ffmpeg` on the `PATH` to actually download in dev. Docker or Podman to build the image.
+Requirements: Node.js 24.22.1 or later (see `.nvmrc`), and `yt-dlp` + `ffmpeg` on the `PATH` to actually download in dev. Docker or Podman to build the image.
 
 ## Run locally (hot reload)
 
