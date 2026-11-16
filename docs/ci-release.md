@@ -1,6 +1,6 @@
 # CI & release
 
-Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml). Triggered on every pull request to `main`, on push to `main` (merged PRs included), every night at 04:17 UTC (catch-up for merges made by a bot, which do not trigger push workflows) and manually (`workflow_dispatch`). Actions are pinned to a commit SHA and kept up to date by Dependabot.
+Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml). Triggered on every pull request to `main`, on push to `main` (merged PRs included), every Sunday at 04:17 UTC (catch-up for merges made by a bot, which do not trigger push workflows; if HEAD is already tagged, the run stops at `version` and `test`/`scan` are skipped) and manually (`workflow_dispatch`). Actions are pinned to a commit SHA and kept up to date by Dependabot.
 
 ## Jobs
 
@@ -14,9 +14,10 @@ Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml). T
    1. build the amd64 image (`load: true`), start it, wait for `/api/health`;
    2. run Playwright `npm run test:offline` (tests tagged `@network` are skipped: YouTube often blocks CI IPs);
    3. Trivy scan of the image (CRITICAL/HIGH with a fix available block the release);
-   4. on `main` only: build `linux/amd64` + `linux/arm64` and push to GHCR with provenance + SBOM. On PRs nothing is pushed.
+   4. on `main` only: build `linux/amd64` + `linux/arm64` and push to GHCR with provenance + SBOM. On PRs only the amd64 image is built (QEMU and the multi-arch step are skipped) and nothing is pushed.
 5. **`release`**: package the extensions (`yt-to-mp3-capture-firefox-*.zip`, `yt-to-mp3-capture-chromium-*.zip`, unsigned) and create the git tag and the GitHub Release (auto-generated notes, `docker pull` command, both zips attached).
 6. **`dependabot-merge`** (PRs opened by Dependabot whose branch contains `-mineures`): once all the above pass, squash-merges the PR and dispatches the workflow on `main`, which releases a patch version.
+7. **`cleanup`** (after a publication and every Sunday, never on PRs): prunes GHCR with `dataaxiom/ghcr-cleanup-action`, keeping the last 10 tagged images and `latest`, deleting untagged versions, orphaned attestations and incomplete multi-arch images.
 
 If any step fails, nothing is pushed or released.
 
