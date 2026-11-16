@@ -32,7 +32,8 @@ e2e/tools/extension-*                manual checks on real YouTube (not CI): hoo
 extension/                          MV3 extension, shared src/ (inject.js MAIN-world hook, content.js, background.js,
                                     popup/, options/), manifests/{firefox,chromium}.json, scripts/build.mjs → dist/<target>
 Dockerfile, docker-compose.yml      Node 24 alpine, non-root, healthcheck
-.github/workflows/release.yml       test → image → e2e → push GHCR → GitHub release (push on main only)
+.github/workflows/release.yml       test + Trivy → image → e2e → push GHCR (amd64+arm64) → GitHub release; PRs: checks only;
+                                    Dependabot *-mineures PRs auto-merged. .github/dependabot.yml: weekly, all npm dirs + docker + actions
 ```
 
 ## Commands
@@ -60,7 +61,7 @@ and `podman build --format docker` (otherwise the HEALTHCHECK is dropped).
 - Every new env variable goes through `backend/src/config.ts`.
 - Every user-supplied URL goes through `validateYoutubeUrl`. Never pass user input to yt-dlp before `--`.
 - New backend behavior gets a test in `backend/test/`; anything visible in the UI gets a Playwright test (tag `@network` if it hits YouTube).
-- Commit messages: add `#minor` / `#major` to bump the release version (patch by default).
+- Commit messages: Conventional Commits drive the release version (`feat:` → minor, `!`/`BREAKING CHANGE` → major, otherwise patch); `#minor` / `#major` still work; `[skip release]` publishes nothing.
 
 ## Keep this file and docs/ up to date
 
