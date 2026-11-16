@@ -1,0 +1,54 @@
+# Mises à jour hebdomadaires (lundi 03:00) groupées par écosystème, majeures à part,
+# avec un délai de 3 jours avant de proposer une version tout juste publiée (les mises
+# à jour de sécurité ne sont pas retardées). Les groupes « -mineures » sont fusionnés
+# automatiquement si la CI passe (voir workflows/release.yml), ce qui publie une
+# nouvelle release et une nouvelle image.
+# yt-dlp n'a pas de manifeste pip : le Dockerfile installe la dernière version à chaque build.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories: ["/backend", "/frontend", "/e2e", "/extension"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 3
+    groups:
+      npm-mineures:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "build(deps-dev)"
+
+  # Image de base du Dockerfile (node).
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 3
+    groups:
+      docker-mineures:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "fix(docker)"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 3
+    groups:
+      github-actions-mineures:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "ci"
